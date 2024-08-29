@@ -1,7 +1,7 @@
 import torch
 import torch.optim as optim
 
-from yolo_model import YOLOV1_tiny, YOLO_ResNet34_BackBone
+from yolo_model import YOLOV1_tiny, YOLOv1ResNet
 from voc_data import train_loader, test_loader
 from yolo_trainer import train_one_epoch, evaluate, save_checkpoint, load_checkpoint
 from yolo_loss import YOLOLoss
@@ -25,7 +25,7 @@ device = torch.device(
     else "cpu"
 )
 
-model = YOLO_ResNet34_BackBone().to(device)
+model = YOLOv1ResNet().to(device)
 # model = torch.compile(model)
 optimizer = optim.Adam(model.parameters(), weight_decay=0.0005)
 criterion = YOLOLoss()
@@ -52,7 +52,7 @@ if __name__ == "__main__":
 
     for epoch in range(num_epochs):
         print(f"Epoch {epoch + 1}/{num_epochs}")
-        train_loss = train_one_epoch(
+        train_loss, train_map = train_one_epoch(
             model, optimizer, criterion, None, train_loader, device
         )
 
@@ -64,6 +64,6 @@ if __name__ == "__main__":
             os.path.join(directory, f"checkpoint_{epoch + 1}.pth"),
         )
 
-        test_loss = evaluate(model, criterion, test_loader, device)
-        print(f"Train Loss: {train_loss:.4f}")
-        print(f"Test Loss: {test_loss:.4f}")
+        test_loss, test_map = evaluate(model, criterion, test_loader, device)
+        print(f"Train Loss: {train_loss:.4f}, Train mAP: {train_map:.4f}")
+        print(f"Test Loss: {test_loss:.4f}, Test mAP: {test_map:.4f}")

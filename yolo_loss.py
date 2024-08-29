@@ -70,9 +70,9 @@ class YOLOLoss(nn.Module):
 
         wh_loss = F.mse_loss(
             target_coords[obj_mask][..., 2:],
-            resp_coords[obj_mask][..., 2:],
+            (resp_coords[obj_mask][..., 2:] ** 2).sqrt(),
             reduction="sum",
-        ).sqrt()
+        )
 
         box_loss = self.L_coord * (center_loss + wh_loss)
 

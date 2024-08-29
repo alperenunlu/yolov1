@@ -55,17 +55,23 @@ def yolo_target_to_xyxy(target, threshold=0.5, config=config):
     w = norm_bndbox_w * canvas_size[0]
     h = norm_bndbox_h * canvas_size[1]
 
+    mask = (w > 0) & (h > 0)
+    x, y, w, h = x[mask], y[mask], w[mask], h[mask]
+
     boxes = box_convert(
         torch.stack([x, y, w, h], dim=-1), in_fmt="cxcywh", out_fmt="xyxy"
     )
 
     labels = torch.argmax(target[center_row, center_col, :C], dim=-1) + 1
+    labels = labels[mask]
 
     boxes = tv_tensors.BoundingBoxes(
         boxes.ceil(),
         format=tv_tensors.BoundingBoxFormat.XYXY,
         canvas_size=canvas_size,
     )
+
+    confidences = confidences[mask]
 
     return boxes, labels, confidences
 
@@ -114,45 +120,55 @@ def yolo_multi_bbox_to_xyxy(bbox, config=config):
 
     vectorized version
     """
-    S = config.S
+    bbox = bbox.clone()
+    N, S1, S2, B, _ = bbox.shape
     canvas_size = config.IMAGE_SIZE
+    cell_size_w = canvas_size[0] / S1
+    cell_size_h = canvas_size[1] / S2
 
-    batch_idx, i_idx, j_idx, b_idx = torch.meshgrid(
-        torch.arange(bbox.size(0)),
-        torch.arange(bbox.size(1)),
-        torch.arange(bbox.size(2)),
-        torch.arange(bbox.size(3)),
+    # Create meshgrid for cell indices
+    cx_offset, cy_offset = torch.meshgrid(
+        torch.arange(S1, device=bbox.device).float(),
+        torch.arange(S2, device=bbox.device).float(),
         indexing="ij",
     )
 
-    batch_idx = batch_idx.to(bbox.device)
-    i_idx = i_idx.to(bbox.device)
-    j_idx = j_idx.to(bbox.device)
-    b_idx = b_idx.to(bbox.device)
+    # Reshape offsets to match bbox shape
+    cx_offset = cx_offset.view(1, S1, S2, 1, 1).expand(N, S1, S2, B, 1)
+    cy_offset = cy_offset.view(1, S1, S2, 1, 1).expand(N, S1, S2, B, 1)
 
-    cell_w = canvas_size[0] / S
-    cell_h = canvas_size[1] / S
+    # Extract cx, cy, w, h from bbox
+    cx, cy, w, h = bbox.split(1, dim=-1)
 
-    bbox[batch_idx, i_idx, j_idx, b_idx, 0] = (
-        i_idx + bbox[batch_idx, i_idx, j_idx, b_idx, 0]
-    ) * cell_w
-    bbox[batch_idx, i_idx, j_idx, b_idx, 1] = (
-        j_idx + bbox[batch_idx, i_idx, j_idx, b_idx, 1]
-    ) * cell_h
-    bbox[batch_idx, i_idx, j_idx, b_idx, 2] = (
-        bbox[batch_idx, i_idx, j_idx, b_idx, 2] * cell_w
-    )
-    bbox[batch_idx, i_idx, j_idx, b_idx, 3] = (
-        bbox[batch_idx, i_idx, j_idx, b_idx, 3] * cell_h
-    )
+    # Convert cx and cy to absolute coordinates
+    cx_abs = (cx_offset + cx) * cell_size_w
+    cy_abs = (cy_offset + cy) * cell_size_h
 
-    return bbox
+    # Convert w and h to absolute sizes
+    w_abs = w * canvas_size[0]
+    h_abs = h * canvas_size[1]
+
+    # Calculate x1, y1, x2, y2
+    x1 = cx_abs - w_abs / 2
+    y1 = cy_abs - h_abs / 2
+    x2 = cx_abs + w_abs / 2
+    y2 = cy_abs + h_abs / 2
+
+    # Concatenate the results
+    xyxy = torch.cat([x1, y1, x2, y2], dim=-1)
+
+    # Set zero boxes to remain zero
+    zero_mask = (bbox == 0).all(dim=-1, keepdim=True)
+    xyxy = xyxy * (~zero_mask)
+
+    return xyxy
 
 
 def yolo_resp_bbox(output, target, config=config):
     S = config.S
     B = config.B
     batch_size = output.size(0)
+    size = (S * S * batch_size)
 
     output_coords = yolo_multi_bbox_to_xyxy(output[..., 1:], config)
     target_coords = yolo_multi_bbox_to_xyxy(
@@ -161,31 +177,33 @@ def yolo_resp_bbox(output, target, config=config):
 
     ious = (
         box_iou(output_coords.view(-1, 4), target_coords.view(-1, 4))
-        .view((S * S * batch_size), B, (S * S * batch_size))
-        .permute(1, 0, 2)
+        .view(size, B, size)
+        .transpose(1, 2)
     )
-    ious = ious.diagonal(dim1=1, dim2=2).permute(1, 0).view(batch_size, S, S, B)
+    ious = ious.diagonal(dim1=1, dim2=2).permute(1, 0).reshape(batch_size, S, S, B)
     ious, best_bbox = ious.max(dim=-1)
 
     # if ious is 0 then responsible box is the one with the lowest rmse
-    # zero_batch, zero_i, zero_j = torch.where(ious == 0)
-    # if zero_batch.size(0) > 0:
-    #     zero_output = output[zero_batch, zero_i, zero_j]
-    #     zero_target = target[zero_batch, zero_i, zero_j].unsqueeze(1)
-    #     rmse = F.mse_loss(
-    #         zero_output[..., 1:],
-    #         zero_target[..., 1:],
-    #         reduction="none",
-    #     ).sqrt().sum(-1)
+    zero_batch, zero_i, zero_j = torch.where(ious == 0)
+    if zero_batch.size(0) > 0:
+        zero_output = output[zero_batch, zero_i, zero_j]
+        zero_target = target[zero_batch, zero_i, zero_j].unsqueeze(1)
+        rmse = (
+            F.mse_loss(
+                zero_output[..., 1:],
+                zero_target[..., 1:],
+                reduction="none",
+            )
+            .sqrt()
+            .sum(-1)
+        )
 
-    #     _, best_bbox[zero_batch, zero_i, zero_j] = rmse.min(dim=-1)
-    #     print(best_bbox[zero_batch, zero_i, zero_j])
+        _, best_bbox[zero_batch, zero_i, zero_j] = rmse.min(dim=-1)
 
     resp_boxes = output.gather(
         -2,
         best_bbox.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, -1, -1, output.size(-1)),
     ).squeeze()
-
 
     return resp_boxes
 
@@ -201,7 +219,8 @@ def yolo_resp_bbox(output, target, config=config):
 #     ]
 # )
 
-train_transforms = T.Compose([
+train_transforms = T.Compose(
+    [
         T.ToImage(),
         T.ColorJitter(brightness=0.5, contrast=0.5, saturation=0.5, hue=0.1),
         T.RandomHorizontalFlip(p=0.5),

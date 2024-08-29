@@ -1,5 +1,5 @@
 from torch import nn
-from torchvision.models import resnet50
+from torchvision.models import resnet34, resnet50
 from config_parser import config
 
 S = config.S
@@ -9,34 +9,43 @@ IMAGE_SIZE = config.IMAGE_SIZE
 VOC_DETECTION_CATEGORIES = config.VOC_DETECTION_CATEGORIES
 
 
+class Block(nn.Module):
+    def __init__(
+        self,
+        in_channels,
+        out_channels,
+        kernel_size,
+        stride = 1,
+        padding = 0,
+    ):
+        super().__init__()
+        self.layer = nn.Sequential(
+            nn.Conv2d(
+                in_channels, out_channels, kernel_size, stride, padding, bias=False
+            ),
+            nn.BatchNorm2d(out_channels),
+            nn.LeakyReLU(inplace=True),
+        )
+
+    def forward(self, x):
+        return self.layer(x)
+
+
 class DetectionHead(nn.Module):
     """The layers added on for detection as described in the paper."""
 
     def __init__(self, in_channels):
         super().__init__()
 
-        inner_channels = 1024
+        inner_channels = 512
         self.depth = 5 * B + C
         self.model = nn.Sequential(
-            nn.Conv2d(in_channels, inner_channels, kernel_size=3, padding=1),
-            nn.BatchNorm2d(inner_channels),
-            nn.LeakyReLU(negative_slope=0.1),
-            nn.Conv2d(
-                inner_channels, inner_channels, kernel_size=3, stride=2, padding=1
-            ),  # (Ch, 14, 14) -> (Ch, 7, 7)
-            nn.BatchNorm2d(inner_channels),
-            nn.LeakyReLU(negative_slope=0.1),
-            nn.Conv2d(inner_channels, inner_channels, kernel_size=3, padding=1),
-            nn.BatchNorm2d(inner_channels),
-            nn.LeakyReLU(negative_slope=0.1),
-            nn.Conv2d(inner_channels, inner_channels, kernel_size=3, padding=1),
-            nn.BatchNorm2d(inner_channels),
-            nn.LeakyReLU(negative_slope=0.1),
-            nn.Flatten(),
-            nn.Linear(7 * 7 * inner_channels, 4096),
-            # nn.Dropout(),
-            nn.LeakyReLU(negative_slope=0.1),
-            nn.Linear(4096, S * S * self.depth),
+            Block(in_channels, inner_channels, 1),
+            Block(inner_channels, inner_channels * 2, 3, 2, 1),
+            Block(inner_channels * 2, inner_channels, 1),
+            Block(inner_channels, inner_channels * 2, 3, 1, 1),
+            Block(inner_channels * 2, inner_channels, 1),
+            nn.Conv2d(inner_channels, self.depth, 1),
         )
 
     def forward(self, x):
@@ -44,13 +53,18 @@ class DetectionHead(nn.Module):
 
 
 class YOLOv1ResNet(nn.Module):
-    def __init__(self, mode="detection"):
+    def __init__(self, backbone="resnet34", mode="detection"):
         super().__init__()
         self.mode = mode
-        self.resnet = resnet50(weights="DEFAULT")
+        if backbone == "resnet34":
+            self.resnet = resnet34(weights="DEFAULT")
+        elif backbone == "resnet50":
+            self.resnet = resnet50(weights="DEFAULT")
+
+        in_features = self.resnet.fc.in_features
         if mode == "detection":
             self.backbone = nn.Sequential(*list(self.resnet.children())[:-2])
-            self.detection_head = DetectionHead(2048)
+            self.detection_head = DetectionHead(in_features)
 
         self.backbone.requires_grad_(False)
 
