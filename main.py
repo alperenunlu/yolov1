@@ -70,7 +70,7 @@ def train(args):
     overall_step = 0
 
     if args.resume_from_checkpoint:
-        if args.resume_from_checkpoint is not None or args.resume_from_checkpoint != "":
+        if args.resume_from_checkpoint:
             accelerator.print(f"Resumed from checkpoint: {args.resume_from_checkpoint}")
             accelerator.load_state(args.resume_from_checkpoint)
             path = os.path.basename(args.resume_from_checkpoint)
@@ -87,9 +87,6 @@ def train(args):
             resume_step = int(training_difference.replace("step_", ""))
             starting_epoch = resume_step // len(train_loader)
             resume_step -= starting_epoch * len(train_loader)
-
-        if starting_epoch > 0:
-            model.requires_grad_(True)
 
     epoch_pbar = tqdm(range(starting_epoch, config.NUM_EPOCHS), desc="Epochs")
     overall_step = 0
@@ -172,9 +169,6 @@ def train(args):
             ),
             step=overall_step,
         )
-
-        if epoch == 0:
-            model.requires_grad_(True)
 
     accelerator.end_training()
 
