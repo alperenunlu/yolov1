@@ -1,0 +1,44 @@
+IMAGE_SIZE:
+  - 448
+  - 448
+
+S: 7
+B: 2
+C: 20
+
+VOC_DETECTION_CATEGORIES:
+  - "__background__"
+  - "aeroplane"
+  - "bicycle"
+  - "bird"
+  - "boat"
+  - "bottle"
+  - "bus"
+  - "car"
+  - "cat"
+  - "chair"
+  - "cow"
+  - "diningtable"
+  - "dog"
+  - "horse"
+  - "motorbike"
+  - "person"
+  - "pottedplant"
+  - "sheep"
+  - "sofa"
+  - "train"
+  - "tvmonitor"
+
+L_coord: 5.0
+L_obj: 1.0
+L_noobj: 0.5
+L_class: 1.0
+
+Rescore: False
+
+BATCH_SIZE: 128
+NUM_EPOCHS: 135
+
+LEARNING_RATE: 0.003
+WEIGHT_DECAY: 0.0005
+PCT_START: 0.1
