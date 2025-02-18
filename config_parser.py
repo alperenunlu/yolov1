@@ -1,7 +1,7 @@
 from typing import List, Tuple
 
 import yaml
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 
 
 @dataclass
@@ -24,6 +24,9 @@ class YOLOConfig:
     LEARNING_RATE: float
     WEIGHT_DECAY: float
     PCT_START: float
+
+    def asdict(self):
+        return asdict(self)
 
 
 def load_config(path: str) -> YOLOConfig:

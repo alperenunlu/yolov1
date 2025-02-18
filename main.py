@@ -51,7 +51,7 @@ def train(args):
     accelerator = Accelerator(**acc_kwargs)
 
     run = os.path.split(__file__)[-1].split(".")[0]
-    accelerator.init_trackers(run, config)
+    accelerator.init_trackers(run, config.asdict())
 
     voc_data = VOCDataModule(config)
     with accelerator.main_process_first():
