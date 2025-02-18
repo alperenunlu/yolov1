@@ -3,14 +3,14 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.func import vmap
 
-from torchvision.ops import box_iou
+from torchvision.ops import complete_box_iou
 
 from torch import Tensor
 
 from yolo_utils import yolo_pred_to_xyxy, yolo_target_to_xyxy
 from config_parser import YOLOConfig
 
-batched_box_iou = vmap(vmap(vmap(box_iou)))
+batched_box_iou = vmap(vmap(vmap(complete_box_iou)))
 
 
 class YOLOLoss(nn.Module):
@@ -69,7 +69,7 @@ def masked_mse(pred: Tensor, target: Tensor, mask: Tensor) -> Tensor:
 
 if __name__ == "__main__":
 
-    def random_pred_and_target(BATCH_SIZE=301, S=7, B=2, C=20):
+    def random_pred_and_target(BATCH_SIZE=16, S=7, B=2, C=20):
         torch.manual_seed(0)
         classes = F.one_hot(
             torch.randint(0, C, (S, S)),
@@ -94,16 +94,9 @@ if __name__ == "__main__":
         return pred, target
 
     from config_parser import load_config
-    from time import perf_counter_ns
-
 
     config = load_config("yolo_config.yaml")
 
     loss = YOLOLoss(config)
-    for _ in range(5):
-        pred, target = random_pred_and_target()
-    start = perf_counter_ns()
-    loss(pred, target)
-    end = perf_counter_ns()
-    print("Time taken in seconds:", (end - start) / 1e9)
+    pred, target = random_pred_and_target()
     print(loss(pred, target))

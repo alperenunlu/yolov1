@@ -1,6 +1,7 @@
 import torch
 
-from torchvision.ops import box_convert, nms
+from torchvision.transforms.v2 import ClampBoundingBoxes
+from torchvision.ops import box_convert, batched_nms
 
 from typing import Tuple, List, Dict, Union
 from torchvision.tv_tensors import BoundingBoxes, BoundingBoxFormat
@@ -8,8 +9,12 @@ from torch import Tensor
 
 from config_parser import YOLOConfig
 
+clamp = ClampBoundingBoxes()
 
-def xyxy_to_yolo_target(boxes: BoundingBoxes, labels: Tensor, config: YOLOConfig) -> Tensor:
+
+def xyxy_to_yolo_target(
+    boxes: BoundingBoxes, labels: Tensor, config: YOLOConfig
+) -> Tensor:
     S = config.S
     C = config.C
     CANVAS_SIZE = config.IMAGE_SIZE
@@ -125,7 +130,9 @@ def yolo_pred_to_xyxy(pred: Tensor, config: YOLOConfig) -> Tuple[Tensor, Tensor]
 
 
 @torch.no_grad()
-def yolo_pred_to_dict(pred: Tensor, config: YOLOConfig) -> List[Dict[str, Union[BoundingBoxes, Tensor]]]:
+def yolo_pred_to_dict(
+    pred: Tensor, config: YOLOConfig
+) -> List[Dict[str, Union[BoundingBoxes, Tensor]]]:
     boxes, classes = yolo_pred_to_xyxy(pred, config)
     box_mask = boxes[..., 0].argmax(dim=-1)
     selected_boxes = boxes.gather(
@@ -136,16 +143,31 @@ def yolo_pred_to_dict(pred: Tensor, config: YOLOConfig) -> List[Dict[str, Union[
     selected_classes = classes[conf_mask].argmax(dim=-1) + 1
     count = conf_mask.sum((1, 2)).tolist()
 
-    pred_dict = [
-        dict(
-            boxes=BoundingBoxes(
-                boxes[..., 1:], format="xyxy", canvas_size=config.IMAGE_SIZE
+    index_list = [
+        batched_nms(
+            boxes=clamp(
+                BoundingBoxes(
+                    boxes[..., 1:], format="xyxy", canvas_size=config.IMAGE_SIZE
+                )
             ),
             scores=boxes[..., 0],
-            labels=labels,
+            idxs=labels,
+            iou_threshold=0.5,
         )
         for boxes, labels in zip(
             selected_boxes.split(count), selected_classes.split(count)
         )
     ]
+
+    pred_dict = [
+        dict(
+            boxes=boxes[index, 1:],
+            labels=labels[index],
+            scores=boxes[index, 0],
+        )
+        for boxes, labels, index in zip(
+            selected_boxes.split(count), selected_classes.split(count), index_list
+        )
+    ]
+
     return pred_dict
