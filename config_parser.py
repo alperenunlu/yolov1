@@ -26,7 +26,10 @@ class YOLOConfig:
     PCT_START: float
 
     def asdict(self):
-        return asdict(self)
+        d = asdict(self)
+        d.pop("VOC_DETECTION_CATEGORIES")
+        d.pop("IMAGE_SIZE")
+        return d
 
 
 def load_config(path: str) -> YOLOConfig:
