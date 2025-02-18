@@ -158,13 +158,16 @@ def yolo_pred_to_dict(
     ]
 
     pred_dict = [
-        dict(
-            boxes=boxes[index, 1:],
-            labels=labels[index],
-            scores=boxes[index, 0],
-        )
-        for boxes, labels, index in zip(
-            selected_boxes.split(count), selected_classes.split(count), index_list
+        {
+            "boxes": boxes[index],
+            "labels": labels[index],
+            "scores": scores[index],
+        }
+        for boxes, labels, scores, index in zip(
+            selected_boxes.split(count),
+            selected_classes.split(count),
+            selected_scores.split(count),
+            index_list,
         )
     ]
 
