@@ -48,10 +48,16 @@ def train(args):
     # acc_kwargs = dict(mixed_precision="bf16", dynamo_backend="inductor")
     acc_kwargs = dict()
     acc_kwargs.update(dict(project_dir=args.project_dir, log_with="all"))
+    accelerator = Accelerator(**acc_kwargs)
+
+    run = os.path.split(__file__)[-1].split(".")[0]
+    accelerator.init_trackers(run, config)
 
     voc_data = VOCDataModule(config)
-    train_loader, valid_loader = voc_data.get_dataloaders()
-    model = YOLO_V1(config)
+    with accelerator.main_process_first():
+        train_loader, valid_loader = voc_data.get_dataloaders()
+        model = YOLO_V1(config)
+
     optimizer = optim.AdamW(
         model.parameters(), lr=config.LEARNING_RATE, weight_decay=config.WEIGHT_DECAY
     )
@@ -61,7 +67,6 @@ def train(args):
     criterion = YOLOLoss(config)
     map_metric = MeanAveragePrecision(backend="faster_coco_eval")
 
-    accelerator = Accelerator(**acc_kwargs)
     model, optimizer, train_loader, valid_loader, scheduler = accelerator.prepare(
         model, optimizer, train_loader, valid_loader, scheduler
     )
