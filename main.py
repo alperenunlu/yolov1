@@ -47,7 +47,7 @@ def train(args):
     config = load_config("yolo_config.yaml")
     # acc_kwargs = dict(mixed_precision="bf16", dynamo_backend="inductor")
     acc_kwargs = dict()
-    acc_kwargs.update(dict(project_dir=args.project_dir, log_with="all"))
+    # acc_kwargs.update(dict(project_dir=args.project_dir, log_with="all"))
     accelerator = Accelerator(**acc_kwargs)
 
     voc_data = VOCDataModule(config)
@@ -98,7 +98,6 @@ def train(args):
     )
     for epoch in epoch_pbar:
         model.train()
-        total_loss = 0
         if (
             args.resume_from_checkpoint
             and epoch == starting_epoch
@@ -115,8 +114,6 @@ def train(args):
             images, yolo_target, labels_dict = batch
             yolo_output = model(images)
             loss = criterion(yolo_output, yolo_target)
-
-            total_loss += loss.detach().float()
 
             optimizer.zero_grad()
             accelerator.backward(loss)
@@ -161,16 +158,6 @@ def train(args):
         if args.checkpointing_steps == "epoch":
             checkpoint_path = os.path.join(args.output_dir, f"epoch_{epoch}")
             accelerator.save_state(checkpoint_path)
-
-        accelerator.log(
-            dict(
-                train_map_50=map_50["train"],
-                valid_map_50=map_50["valid"],
-                train_loss=total_loss / len(train_loader),
-                epoch=epoch,
-            ),
-            step=overall_step,
-        )
 
     accelerator.end_training()
 
