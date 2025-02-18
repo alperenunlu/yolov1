@@ -62,12 +62,8 @@ def train(args):
     optimizer = optim.AdamW(
         model.parameters(), lr=config.LEARNING_RATE, weight_decay=config.WEIGHT_DECAY
     )
-    scheduler = optim.lr_scheduler.OneCycleLR(
-        optimizer,
-        max_lr=config.LEARNING_RATE,
-        steps_per_epoch=len(train_loader),
-        epochs=config.NUM_EPOCHS,
-        pct_start=config.PCT_START,
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, T_max=config.NUM_EPOCHS, eta_min=1e-6
     )
     criterion = YOLOLoss(config)
     map_metric = MeanAveragePrecision(backend="faster_coco_eval")
@@ -134,7 +130,6 @@ def train(args):
             optimizer.zero_grad()
             accelerator.backward(loss)
             optimizer.step()
-            scheduler.step()
 
             yolo_output, labels_dict = accelerator.gather_for_metrics(
                 (yolo_output, labels_dict)
@@ -150,6 +145,7 @@ def train(args):
                         output_dir = os.path.join(args.output_dir, output_dir)
                     accelerator.save_state(output_dir)
 
+        scheduler.step()
         metric_dict = map_metric.compute()
         map_50["train"] = metric_dict["map_50"]
         epoch_pbar.set_postfix(map_50)
