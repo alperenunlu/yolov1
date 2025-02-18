@@ -16,8 +16,7 @@ from config_parser import YOLOConfig
 
 n_cpu = os.cpu_count() or 0
 
-download = not __import__("os").path.exists("./data/VOCdevkit")
-
+download = not os.path.exists("./data/VOCdevkit")
 
 class VOCDataModule:
     def __init__(self, config: YOLOConfig):
@@ -102,6 +101,7 @@ class VOCDataModule:
             shuffle=True,
             collate_fn=self._collate_fn,
             num_workers=n_cpu,
+            persistent_workers=True if torch.cuda.is_available() else False,
         )
 
         valid_loader = DataLoader(
@@ -110,6 +110,7 @@ class VOCDataModule:
             shuffle=False,
             collate_fn=self._collate_fn,
             num_workers=n_cpu,
+            persistent_workers=True if torch.cuda.is_available() else False,
         )
 
         return train_loader, valid_loader

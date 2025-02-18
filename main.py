@@ -6,6 +6,7 @@ from yolo_model import YOLO_V1
 from yolo_loss import YOLOLoss
 from yolo_utils import yolo_pred_to_dict
 from torchmetrics.detection import MeanAveragePrecision
+from map import MAP50Metric
 from accelerate import Accelerator
 from config_parser import load_config
 from tqdm.auto import tqdm
@@ -59,7 +60,8 @@ def train(args):
         optimizer, T_max=config.NUM_EPOCHS, eta_min=1e-6
     )
     criterion = YOLOLoss(config)
-    map_metric = MeanAveragePrecision(backend="faster_coco_eval")
+    map_metric0 = MeanAveragePrecision(backend="faster_coco_eval")
+    map_metric1 = MAP50Metric()
 
     accelerator = Accelerator(**acc_kwargs)
     model, optimizer, train_loader, valid_loader, scheduler = accelerator.prepare(
@@ -91,6 +93,8 @@ def train(args):
     epoch_pbar = tqdm(range(starting_epoch, config.NUM_EPOCHS), desc="Epochs")
     overall_step = 0
     map_50 = dict(
+        my_train_map_50=None,
+        my_valid_map_50=None,
         train=None,
         valid=None,
     )
@@ -123,7 +127,8 @@ def train(args):
             yolo_output, labels_dict = accelerator.gather_for_metrics(
                 (yolo_output, labels_dict)
             )
-            map_metric.update(yolo_pred_to_dict(yolo_output, config), labels_dict)
+            map_metric0.update(yolo_pred_to_dict(yolo_output, config), labels_dict)
+            map_metric1.update(yolo_pred_to_dict(yolo_output, config), labels_dict)
 
             train_pbar.set_postfix(loss=loss.item())
 
@@ -135,10 +140,12 @@ def train(args):
                     accelerator.save_state(output_dir)
 
         scheduler.step()
-        metric_dict = map_metric.compute()
+        metric_dict = map_metric0.compute()
         map_50["train"] = metric_dict["map_50"]
+        map_50["my_train_map_50"] = map_metric1.compute()
         epoch_pbar.set_postfix(map_50)
-        map_metric.reset()
+        map_metric0.reset()
+        map_metric1.reset()
 
         model.eval()
         valid_pbar = tqdm(valid_loader, desc="Validation", leave=False)
@@ -150,11 +157,14 @@ def train(args):
             yolo_output, labels_dict = accelerator.gather_for_metrics(
                 (yolo_output, labels_dict)
             )
-            map_metric.update(yolo_pred_to_dict(yolo_output, config), labels_dict)
-        metric_dict = map_metric.compute()
+            map_metric0.update(yolo_pred_to_dict(yolo_output, config), labels_dict)
+            map_metric1.update(yolo_pred_to_dict(yolo_output, config), labels_dict)
+        metric_dict = map_metric0.compute()
         map_50["valid"] = metric_dict["map_50"]
+        map_50["my_valid_map_50"] = map_metric1.compute()
         epoch_pbar.set_postfix(map_50)
-        map_metric.reset()
+        map_metric0.reset()
+        map_metric1.reset()
 
         if args.checkpointing_steps == "epoch":
             checkpoint_path = os.path.join(args.output_dir, f"epoch_{epoch}")

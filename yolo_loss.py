@@ -94,7 +94,6 @@ if __name__ == "__main__":
         return pred, target
 
     from config_parser import load_config
-
     config = load_config("yolo_config.yaml")
 
     loss = YOLOLoss(config)
