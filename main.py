@@ -9,7 +9,7 @@ from torchmetrics.detection import MeanAveragePrecision
 from map import MAP50Metric
 from accelerate import Accelerator
 from config_parser import load_config
-from tqdm import tqdm
+from tqdm.auto import tqdm
 import argparse
 
 
@@ -90,7 +90,7 @@ def train(args):
             starting_epoch = resume_step // len(train_loader)
             resume_step -= starting_epoch * len(train_loader)
 
-    epoch_pbar = tqdm(range(starting_epoch, config.NUM_EPOCHS), desc="Epochs", position=0)
+    epoch_pbar = tqdm(range(starting_epoch, config.NUM_EPOCHS), desc="Epochs")
     overall_step = 0
     map_50 = dict(
         my_train_map_50=None,
@@ -109,10 +109,10 @@ def train(args):
             active_loader = accelerator.skip_first_batches(train_loader, resume_step)
             overall_step += resume_step
             train_pbar = tqdm(
-                active_loader, desc="Training", leave=False, initial=resume_step, position=1
+                active_loader, desc="Training", leave=False, initial=resume_step
             )
         else:
-            train_pbar = tqdm(train_loader, desc="Training", leave=False, position=1)
+            train_pbar = tqdm(train_loader, desc="Training", leave=False)
         for batch in train_pbar:
             images, yolo_target, labels_dict = batch
             yolo_output = model(images)
@@ -148,7 +148,7 @@ def train(args):
         map_metric1.reset()
 
         model.eval()
-        valid_pbar = tqdm(valid_loader, desc="Validation", leave=False, position=2)
+        valid_pbar = tqdm(valid_loader, desc="Validation", leave=False)
         for batch in valid_pbar:
             images, yolo_target, labels_dict = batch
             with torch.no_grad():
