@@ -35,12 +35,6 @@ def parse_args():
         help="Path to resume training from a checkpoint",
     )
     parser.add_argument(
-        "--with_tracking",
-        default=True,
-        action="store_true",
-        help="Enable logging with Accelerate experiment tracking",
-    )
-    parser.add_argument(
         "--project_dir",
         type=str,
         default="logs",
@@ -53,8 +47,7 @@ def train(args):
     config = load_config("yolo_config.yaml")
     # acc_kwargs = dict(mixed_precision="bf16", dynamo_backend="inductor")
     acc_kwargs = dict()
-    if args.with_tracking:
-        acc_kwargs.update(dict(project_dir=args.project_dir, log_with="all"))
+    acc_kwargs.update(dict(project_dir=args.project_dir, log_with="all"))
 
     voc_data = VOCDataModule(config)
     train_loader, valid_loader = voc_data.get_dataloaders()
@@ -124,8 +117,7 @@ def train(args):
             yolo_output = model(images)
             loss = criterion(yolo_output, yolo_target)
 
-            if args.with_tracking:
-                total_loss += loss.detach().float()
+            total_loss += loss.detach().float()
 
             optimizer.zero_grad()
             accelerator.backward(loss)
@@ -171,16 +163,15 @@ def train(args):
             checkpoint_path = os.path.join(args.output_dir, f"epoch_{epoch}")
             accelerator.save_state(checkpoint_path)
 
-        if args.with_tracking:
-            accelerator.log(
-                dict(
-                    train_map_50=map_50["train"],
-                    valid_map_50=map_50["valid"],
-                    train_loss=total_loss / len(train_loader),
-                    epoch=epoch,
-                ),
-                step=overall_step,
-            )
+        accelerator.log(
+            dict(
+                train_map_50=map_50["train"],
+                valid_map_50=map_50["valid"],
+                train_loss=total_loss / len(train_loader),
+                epoch=epoch,
+            ),
+            step=overall_step,
+        )
 
         if epoch == 0:
             model.requires_grad_(True)

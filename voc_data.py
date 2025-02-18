@@ -14,7 +14,7 @@ from typing import Tuple
 
 from config_parser import YOLOConfig
 
-n_cpu = os.cpu_count() if os.cpu_count() else 0
+n_cpu = os.cpu_count() or 0
 
 download = not __import__("os").path.exists("./data/VOCdevkit")
 
