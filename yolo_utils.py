@@ -1,15 +1,12 @@
 import torch
 
-from torchvision.transforms.v2 import ClampBoundingBoxes
-from torchvision.ops import box_convert, batched_nms
+from torchvision.ops import box_convert, batched_nms, clip_boxes_to_image
 
 from typing import Tuple, List, Dict, Union
 from torchvision.tv_tensors import BoundingBoxes, BoundingBoxFormat
 from torch import Tensor
 
 from config_parser import YOLOConfig
-
-clamp = ClampBoundingBoxes()
 
 
 def xyxy_to_yolo_target(
@@ -139,23 +136,24 @@ def yolo_pred_to_dict(
         dim=-2, index=box_mask[..., None, None].expand(-1, -1, -1, -1, 5)
     ).squeeze(-2)
     conf_mask = selected_boxes[..., 0] > 0.5
-    selected_boxes = selected_boxes[conf_mask]
+    selected_scores = selected_boxes[conf_mask][:, 0]
+    selected_boxes = selected_boxes[conf_mask][:, 1:]
     selected_classes = classes[conf_mask].argmax(dim=-1) + 1
     count = conf_mask.sum((1, 2)).tolist()
 
+    selected_boxes = clip_boxes_to_image(selected_boxes, size=config.IMAGE_SIZE)
+
     index_list = [
         batched_nms(
-            boxes=clamp(
-                BoundingBoxes(
-                    boxes[..., 1:], format="xyxy", canvas_size=config.IMAGE_SIZE
-                )
-            ),
-            scores=boxes[..., 0],
+            boxes=BoundingBoxes(boxes, format="xyxy", canvas_size=config.IMAGE_SIZE),
+            scores=scores,
             idxs=labels,
             iou_threshold=0.5,
         )
-        for boxes, labels in zip(
-            selected_boxes.split(count), selected_classes.split(count)
+        for boxes, scores, labels in zip(
+            selected_boxes.split(count),
+            selected_scores.split(count),
+            selected_classes.split(count),
         )
     ]
 
