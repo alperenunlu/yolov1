@@ -50,9 +50,6 @@ def train(args):
     acc_kwargs.update(dict(project_dir=args.project_dir, log_with="all"))
     accelerator = Accelerator(**acc_kwargs)
 
-    run = os.path.split(__file__)[-1].split(".")[0]
-    accelerator.init_trackers(run, config.asdict())
-
     voc_data = VOCDataModule(config)
     with accelerator.main_process_first():
         train_loader, valid_loader = voc_data.get_dataloaders()
