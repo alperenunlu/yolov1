@@ -21,7 +21,6 @@ class MAP50Metric(nn.Module):
             pred_dict_list: List of dicts with keys 'boxes', 'labels', 'scores' (predictions), each dict corresponds to an image.
             labels_dict_list: List of dicts with keys 'boxes', 'labels' (ground truth), each dict corresponds to an image.
         """
-        print(len(pred_dict_list))
         for preds, gts in zip(pred_dict_list, labels_dict_list):
             pred_boxes = preds['boxes']  # Tensor[N, 4]
             pred_labels = preds['labels']  # Tensor[N]
