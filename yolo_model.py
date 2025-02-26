@@ -16,6 +16,8 @@ class YOLO_V1(nn.Module):
         self.backbone = create_model(
             "resnetv2_50.a1h_in1k", pretrained=True, num_classes=0
         )
+        self.backbone.requires_grad_(False)
+        self.backbone.eval()
 
         self.head = nn.Sequential(
             nn.Conv2d(2048, 1024, kernel_size=3, padding=1, bias=False),
@@ -51,6 +53,10 @@ class YOLO_V1(nn.Module):
             elif isinstance(m, nn.BatchNorm2d):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
+
+    def train(self, mode=True):
+        super().train(mode)
+        self.backbone.eval()
 
     def forward(self, x: Tensor) -> Tensor:
         x = self.backbone.forward_features(x)
