@@ -13,9 +13,9 @@ class YOLO_V1(nn.Module):
         self.B = config.B
         self.C = config.C
 
-        self.backbone = create_model("resnetv2_50.a1h_in1k", pretrained=True, num_classes=0)
-        self.backbone.requires_grad_(False)
-        self.backbone.eval()
+        self.backbone = create_model(
+            "resnetv2_50.a1h_in1k", pretrained=True, num_classes=0
+        )
 
         self.head = nn.Sequential(
             nn.Conv2d(2048, 1024, kernel_size=3, padding=1, bias=False),

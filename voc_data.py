@@ -15,8 +15,7 @@ from typing import Tuple
 from config_parser import YOLOConfig
 
 n_cpu = os.cpu_count() or 0
-
-download = not __import__("os").path.exists("./data/VOCdevkit")
+download = os.path.exists("./data/VOCdevkit")
 
 
 class VOCDataModule:
@@ -30,6 +29,7 @@ class VOCDataModule:
         return v2.Compose(
             [
                 v2.ToImage(),
+                v2.RandomHorizontalFlip(),
                 v2.ColorJitter(brightness=0.5, contrast=0, saturation=0.5, hue=0),
                 v2.RandomAffine(
                     degrees=0,
@@ -40,6 +40,8 @@ class VOCDataModule:
                 v2.Resize(self.config.IMAGE_SIZE),
                 v2.ToDtype(torch.float32, scale=True),
                 v2.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+                v2.ClampBoundingBoxes(),
+                v2.SanitizeBoundingBoxes(),
             ]
         )
 
@@ -51,6 +53,8 @@ class VOCDataModule:
                 v2.Resize(self.config.IMAGE_SIZE),
                 v2.ToDtype(torch.float32, scale=True),
                 v2.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+                v2.ClampBoundingBoxes(),
+                v2.SanitizeBoundingBoxes(),
             ]
         )
 
@@ -102,6 +106,7 @@ class VOCDataModule:
             shuffle=True,
             collate_fn=self._collate_fn,
             num_workers=n_cpu,
+            pin_memory=True if torch.cuda.is_available() else False,
         )
 
         valid_loader = DataLoader(
@@ -110,6 +115,7 @@ class VOCDataModule:
             shuffle=False,
             collate_fn=self._collate_fn,
             num_workers=n_cpu,
+            pin_memory=True if torch.cuda.is_available() else False,
         )
 
         return train_loader, valid_loader
