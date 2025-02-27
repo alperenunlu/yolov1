@@ -68,7 +68,11 @@ def train(args):
         pct_start=config.PCT_START,
     )
     criterion = YOLOLoss(config)
-    map_metric = MeanAveragePrecision(backend="faster_coco_eval")
+    map_metric = MeanAveragePrecision(
+        backend="faster_coco_eval",
+        iou_thresholds=[0.5],
+        rec_thresholds=[i / 10 for i in range(11)],
+    )
 
     model, optimizer, train_loader, valid_loader, scheduler = accelerator.prepare(
         model, optimizer, train_loader, valid_loader, scheduler
@@ -161,7 +165,9 @@ def train(args):
         epoch_pbar.set_postfix(map_50)
         map_metric.reset()
 
-        if args.checkpointing_steps == "epoch" and (epoch % 10 == 0 or epoch > config.NUM_EPOCHS - 5):
+        if args.checkpointing_steps == "epoch" and (
+            epoch % 10 == 0 or epoch > config.NUM_EPOCHS - 5
+        ):
             checkpoint_path = os.path.join(args.output_dir, f"epoch_{epoch}")
             accelerator.save_state(checkpoint_path)
 
