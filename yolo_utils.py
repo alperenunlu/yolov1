@@ -145,7 +145,7 @@ def yolo_pred_to_dict(
 
     index_list = [
         batched_nms(
-            boxes=BoundingBoxes(boxes, format="xyxy", canvas_size=config.IMAGE_SIZE),
+            boxes=boxes,
             scores=scores,
             idxs=labels,
             iou_threshold=0.5,
@@ -159,7 +159,9 @@ def yolo_pred_to_dict(
 
     pred_dict = [
         {
-            "boxes": boxes[index],
+            "boxes": BoundingBoxes(
+                boxes[index], format="xyxy", canvas_size=config.IMAGE_SIZE
+            ),
             "labels": labels[index],
             "scores": scores[index],
         }
