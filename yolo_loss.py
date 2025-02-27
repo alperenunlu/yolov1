@@ -60,7 +60,7 @@ class YOLOLoss(nn.Module):
 
         total_loss = coord_loss + conf_loss + noobj_loss + class_loss
 
-        return total_loss
+        return total_loss / pred.size(0)
 
 
 def masked_mse(pred: Tensor, target: Tensor, mask: Tensor) -> Tensor:
