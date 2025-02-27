@@ -43,7 +43,7 @@ class YOLOLoss(nn.Module):
 
         xy_loss = masked_mse(pred_boxes[..., 1:3], target_boxes[..., 1:3], obj_mask)
         wh_loss = masked_mse(
-            pred_boxes[..., 3:5].abs(), target_boxes[..., 3:5], obj_mask
+            pred_boxes[..., 3:5].abs().sqrt(), target_boxes[..., 3:5].sqrt(), obj_mask
         )
         coord_loss = self.L_coord * (xy_loss + wh_loss)
 

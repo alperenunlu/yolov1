@@ -17,6 +17,7 @@ class YOLO_V1(nn.Module):
             "resnetv2_50.a1h_in1k", pretrained=True, num_classes=0
         )
         self.backbone.requires_grad_(False)
+        self.backbone.stages[-1].requires_grad_(True)
         self.backbone.eval()
 
         self.head = nn.Sequential(
