@@ -100,7 +100,6 @@ def yolo_pred_to_xyxy(pred: Tensor, config: YOLOConfig) -> Tuple[Tensor, Tensor]
     boxes = pred[..., C:].view(-1, S, S, B, 5)
 
     c, x, y, w, h = boxes.unbind(-1)
-    c = (c > 0).float()
 
     x_grid, y_grid = torch.meshgrid(
         torch.arange(S, device=device) * cell_w,
@@ -108,8 +107,8 @@ def yolo_pred_to_xyxy(pred: Tensor, config: YOLOConfig) -> Tuple[Tensor, Tensor]
         indexing="ij",
     )
 
-    x_grid = x_grid[..., None] * c
-    y_grid = y_grid[..., None] * c
+    x_grid = x_grid[..., None]
+    y_grid = y_grid[..., None]
 
     x = x * cell_w + x_grid
     y = y * cell_h + y_grid
