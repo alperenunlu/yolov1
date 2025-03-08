@@ -32,8 +32,6 @@ class YOLOConfig:
 
     def asdict(self):
         d = asdict(self)
-        d.pop("VOC_DETECTION_CATEGORIES")
-        d.pop("IMAGE_SIZE")
         return d
 
 
