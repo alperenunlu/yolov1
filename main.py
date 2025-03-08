@@ -45,10 +45,16 @@ def parse_args():
 
 def train(args):
     config = load_config("yolo_config.yaml")
-    # acc_kwargs = dict(mixed_precision="bf16", dynamo_backend="inductor")
-    acc_kwargs = dict()
-    # acc_kwargs.update(dict(project_dir=args.project_dir, log_with="all"))
-    accelerator = Accelerator(**acc_kwargs)
+
+    accelerator = Accelerator(
+        project_dir=args.project_dir,
+        log_with="wandb",
+        dynamo_backend="inductor" if torch.cuda.is_available() else None,
+    )
+    accelerator.init_trackers(
+        project_name="yolo-v1",
+        config=config.asdict(),
+    )
 
     voc_data = VOCDataModule(config)
     with accelerator.main_process_first():
@@ -97,13 +103,19 @@ def train(args):
             starting_epoch = resume_step // len(train_loader)
             resume_step -= starting_epoch * len(train_loader)
 
-    epoch_pbar = tqdm(range(starting_epoch, config.NUM_EPOCHS), desc="Epochs", initial=starting_epoch, total=config.NUM_EPOCHS)
-    overall_step = 0
+    epoch_pbar = tqdm(
+        range(starting_epoch, config.NUM_EPOCHS),
+        desc="Epochs",
+        initial=starting_epoch,
+        total=config.NUM_EPOCHS,
+    )
+
     map_50 = dict(
         train=None,
         valid=None,
     )
     for epoch in epoch_pbar:
+        total_loss = 0
         model.train()
         if (
             args.resume_from_checkpoint
@@ -117,6 +129,7 @@ def train(args):
             )
         else:
             train_pbar = tqdm(train_loader, desc="Training", leave=False)
+
         for batch in train_pbar:
             images, yolo_target, labels_dict = batch
             yolo_output = model(images)
@@ -133,6 +146,8 @@ def train(args):
             map_metric.update(yolo_pred_to_dict(yolo_output, config), labels_dict)
 
             train_pbar.set_postfix(loss=loss.item())
+            total_loss += loss.item()
+            overall_step += 1
 
             if isinstance(args.checkpointing_steps, int):
                 output_dir = f"step_{overall_step}"
@@ -167,6 +182,17 @@ def train(args):
         ):
             checkpoint_path = os.path.join(args.output_dir, f"epoch_{epoch}")
             accelerator.save_state(checkpoint_path)
+
+        accelerator.log(
+            dict(
+                train_map_50=map_50["train"],
+                valid_map_50=map_50["valid"],
+                train_loss=total_loss / len(train_loader),
+                epoch=epoch,
+                lr=optimizer.param_groups[0]["lr"],
+            ),
+            step=overall_step,
+        )
 
     accelerator.end_training()
 

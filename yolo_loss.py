@@ -1,14 +1,11 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.func import vmap
 
-# from torchvision.ops import box_iou
+from yolo_utils import box_iou, box_rmse
+
 from torch import Tensor
-from yolo_utils import yolo_pred_to_xyxy, yolo_target_to_xyxy, box_iou, box_rmse
 from config_parser import YOLOConfig
-
-# batched_box_iou = vmap(vmap(vmap(box_iou)))
 
 
 class YOLOLoss(nn.Module):
@@ -71,16 +68,6 @@ class YOLOLoss(nn.Module):
 
         class_loss = self.L_class * obj_mse_loss[..., : self.C].sum()
 
-        # print(
-        #     "Coord Loss: ",
-        #     coord_loss.item(),
-        #     "Conf Loss: ",
-        #     conf_loss.item(),
-        #     "Noobj Loss: ",
-        #     noobj_loss.item(),
-        #     "Class Loss: ",
-        #     class_loss.item(),
-        # )
         total_loss = coord_loss + conf_loss + noobj_loss + class_loss
 
         return total_loss / pred.size(0)
@@ -126,11 +113,3 @@ if __name__ == "__main__":
     loss = loss_fn(pred, target)
     loss.backward()
     print(loss)
-    # print(pred.grad[0, 0, 0])
-    # pred.requires_grad_(False)
-
-    # from darknet_detection import DarknetDetection
-
-    # darknet = DarknetDetection(config)
-    # delta = darknet(pred, target)
-    # print(delta[0, 0, 0])
