@@ -30,7 +30,6 @@ class YOLOConfig:
     LEARNING_RATE: float
     WEIGHT_DECAY: float
     MOMENTUM: float
-    PCT_START: float
 
     def asdict(self):
         d = asdict(self)

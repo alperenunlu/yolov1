@@ -34,7 +34,7 @@ L_obj: 1.0
 L_noobj: 0.5
 L_class: 1.0
 
-Rescore: True
+Rescore: False
 Sqrt: True
 
 BATCH_SIZE: 64
@@ -45,7 +45,6 @@ Brightness: 1.5
 Saturation: 1.5
 Hue: 0.1
 
-LEARNING_RATE: 0.005
+LEARNING_RATE: 1E-4
 WEIGHT_DECAY: 0.0005
 MOMENTUM: 0.9
-PCT_START: 0.015
