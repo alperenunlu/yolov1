@@ -29,7 +29,6 @@ class YOLOConfig:
 
     LEARNING_RATE: float
     WEIGHT_DECAY: float
-    MOMENTUM: float
 
     def asdict(self):
         d = asdict(self)

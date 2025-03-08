@@ -156,6 +156,11 @@ def train(args):
                         output_dir = os.path.join(args.output_dir, output_dir)
                     accelerator.save_state(output_dir)
 
+            accelerator.log(
+                dict(lr=optimizer.param_groups[0]["lr"]),
+                step=overall_step,
+            )
+
         metric_dict = map_metric.compute()
         map_50["train"] = metric_dict["map_50"]
         epoch_pbar.set_postfix(map_50)
@@ -187,9 +192,8 @@ def train(args):
             dict(
                 train_map_50=map_50["train"],
                 valid_map_50=map_50["valid"],
-                train_loss=total_loss / len(train_loader),
+                epoch_loss=total_loss / len(train_loader),
                 epoch=epoch,
-                lr=optimizer.param_groups[0]["lr"],
             ),
             step=overall_step,
         )
