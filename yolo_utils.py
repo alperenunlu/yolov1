@@ -12,6 +12,16 @@ from config_parser import YOLOConfig
 def xyxy_to_yolo_target(
     boxes: BoundingBoxes, labels: Tensor, config: YOLOConfig
 ) -> Tensor:
+    """Converts :class:`BoundingBoxes` boxes and :class:`Tensor` labels to yolo style cxcywh format target.
+
+    Args:
+        boxes (BoundingBoxes): Target boxes in xyxy format.
+        labels (Tensor): Target labels.
+        config (YOLOConfig): Configuration object.
+
+    Returns:
+        Tensor: Converted boxes in yolo format.
+    """
     S = config.S
     C = config.C
     CANVAS_SIZE = config.IMAGE_SIZE
@@ -51,6 +61,16 @@ def xyxy_to_yolo_target(
 
 @torch.no_grad()
 def yolo_target_to_xyxy(target: Tensor, config: YOLOConfig) -> Tuple[Tensor, Tensor]:
+    """Converts :class:`torch.Tensor` target from yolo style cxcywh format to xyxy format.
+
+    Args:
+        boxes (Tensor[Batch, S, S, C + 5]): Target boxes in yolo format.
+        config (YOLOConfig): Configuration object.
+
+    Returns:
+        Tuple[Tensor[Batch, S, S, 5], Tensor[Batch, S, S, C]]: Converted boxes in xyxy format and classes
+    """
+    box_convert
     S = config.S
     C = config.C
     CANVAS_SIZE = config.IMAGE_SIZE
@@ -59,7 +79,7 @@ def yolo_target_to_xyxy(target: Tensor, config: YOLOConfig) -> Tuple[Tensor, Ten
     cell_w = CANVAS_SIZE[0] / S
     cell_h = CANVAS_SIZE[1] / S
 
-    c, x, y, w, h = target[..., C:].unbind(-1)
+    is_obj, x, y, w, h = target[..., C:].unbind(-1)
 
     x_grid, y_grid = torch.meshgrid(
         torch.arange(S, device=device) * cell_w,
@@ -67,8 +87,8 @@ def yolo_target_to_xyxy(target: Tensor, config: YOLOConfig) -> Tuple[Tensor, Ten
         indexing="ij",
     )
 
-    x_grid = x_grid * c
-    y_grid = y_grid * c
+    x_grid = x_grid * is_obj
+    y_grid = y_grid * is_obj
 
     x = x * cell_w + x_grid
     y = y * cell_h + y_grid
@@ -81,13 +101,22 @@ def yolo_target_to_xyxy(target: Tensor, config: YOLOConfig) -> Tuple[Tensor, Ten
         out_fmt="xyxy",
     )
 
-    boxes = torch.cat((c[..., None], coords), -1)
+    boxes = torch.cat((is_obj[..., None], coords), -1)
 
     return boxes, target[..., :C]
 
 
 @torch.no_grad()
 def yolo_pred_to_xyxy(pred: Tensor, config: YOLOConfig) -> Tuple[Tensor, Tensor]:
+    """Converts :class:`torch.Tensor` prediction from yolo style cxcywh format to xyxy format.
+
+    Args:
+        boxes (Tensor[Batch, S, S, C + B * 5]): Prediction boxes in yolo format.
+        config (YOLOConfig): Configuration object.
+
+    Returns:
+        Tuple[Tensor[Batch, S, S, B, 5], Tensor[Batch, S, S, C]]: Converted boxes in xyxy format and classes
+    """
     S = config.S
     C = config.C
     B = config.B
@@ -112,8 +141,11 @@ def yolo_pred_to_xyxy(pred: Tensor, config: YOLOConfig) -> Tuple[Tensor, Tensor]
 
     x = x * cell_w + x_grid
     y = y * cell_h + y_grid
-    w = torch.abs(w) * CANVAS_SIZE[0]
-    h = torch.abs(h) * CANVAS_SIZE[1]
+    if config.Sqrt:
+        w = w.pow(2)
+        h = h.pow(2)
+    w = w * CANVAS_SIZE[0]
+    h = h * CANVAS_SIZE[1]
 
     coords = box_convert(
         torch.stack((x, y, w, h), -1),
@@ -130,12 +162,23 @@ def yolo_pred_to_xyxy(pred: Tensor, config: YOLOConfig) -> Tuple[Tensor, Tensor]
 def yolo_pred_to_dict(
     pred: Tensor, config: YOLOConfig
 ) -> List[Dict[str, Union[BoundingBoxes, Tensor]]]:
+    """Converts :class:`torch.Tensor` prediction to a list of :class:`BoundingBoxes`, :class:`Tensor` labels and :class:`Tensor` scores.
+
+    List of dictionaries containing `boxes`, `labels` and `scores`.
+
+    Args:
+        pred (Tensor[Batch, S, S, C + B * 5]): Prediction boxes in yolo format.
+        config (YOLOConfig): Configuration
+
+    Returns:
+        List[Dict[str, Union[BoundingBoxes, Tensor]]]: List of dictionaries containing boxes, labels and scores.
+    """
     boxes, classes = yolo_pred_to_xyxy(pred, config)
     box_mask = boxes[..., 0].argmax(dim=-1)
     selected_boxes = boxes.gather(
         dim=-2, index=box_mask[..., None, None].expand(-1, -1, -1, -1, 5)
     ).squeeze(-2)
-    conf_mask = selected_boxes[..., 0] > 0.5
+    conf_mask = selected_boxes[..., 0] > 0.05
     selected_scores = selected_boxes[conf_mask][:, 0]
     selected_boxes = selected_boxes[conf_mask][:, 1:]
     selected_classes = classes[conf_mask].argmax(dim=-1) + 1
@@ -174,3 +217,19 @@ def yolo_pred_to_dict(
     ]
 
     return pred_dict
+
+
+def box_iou(pred, target):
+    l1 = pred[..., 1:3] - pred[..., 3:] / 2
+    l2 = target[..., 1:3] - target[..., 3:] / 2
+    left = torch.max(l1, l2[..., None, :])
+    r1 = pred[..., 1:3] + pred[..., 3:] / 2
+    r2 = target[..., 1:3] + target[..., 3:] / 2
+    right = torch.min(r1, r2[..., None, :])
+    i = torch.relu(right - left).prod(-1)
+    u = pred[..., 3:].prod(-1) + target[..., None, 3:].prod(-1) - i
+    return i / (u + 1e-6)
+
+
+def box_rmse(pred, target):
+    return ((pred[..., 1:] - target[..., None, 1:]).pow(2).sum(-1)).sqrt()

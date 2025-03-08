@@ -13,15 +13,10 @@ class YOLO_V1(nn.Module):
         self.B = config.B
         self.C = config.C
 
-        self.backbone = create_model(
-            "resnetv2_50.a1h_in1k", pretrained=True, num_classes=0
-        )
-        self.backbone.requires_grad_(False)
-        self.backbone.stages[-1].requires_grad_(True)
-        self.backbone.eval()
+        self.backbone = create_model("resnet18.tv_in1k", pretrained=True, num_classes=0)
 
         self.head = nn.Sequential(
-            nn.Conv2d(2048, 1024, kernel_size=3, padding=1, bias=False),
+            nn.Conv2d(512, 1024, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(1024),
             nn.LeakyReLU(0.1, inplace=True),
             nn.Conv2d(1024, 1024, kernel_size=3, padding=1, stride=2, bias=False),
@@ -35,7 +30,6 @@ class YOLO_V1(nn.Module):
             nn.LeakyReLU(0.1, inplace=True),
             nn.Flatten(),
             nn.Linear(1024 * 7 * 7, 4096, bias=False),
-            nn.BatchNorm1d(4096),
             nn.LeakyReLU(0.1, inplace=True),
             nn.Dropout(0.5),
             nn.Linear(4096, config.S * config.S * (config.B * 5 + config.C)),
@@ -51,6 +45,7 @@ class YOLO_V1(nn.Module):
                 )
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0)
+
             elif isinstance(m, nn.BatchNorm2d):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
@@ -62,7 +57,7 @@ class YOLO_V1(nn.Module):
     def forward(self, x: Tensor) -> Tensor:
         x = self.backbone.forward_features(x)
         x = self.head(x)
-        return x.view(x.size(0), self.S, self.S, self.B * 5 + self.C)
+        return x.reshape(x.size(0), self.S, self.S, self.B * 5 + self.C)
 
 
 if __name__ == "__main__":

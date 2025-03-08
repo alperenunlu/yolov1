@@ -15,13 +15,12 @@ from typing import Tuple
 from config_parser import YOLOConfig
 
 n_cpu = os.cpu_count() or 0
-download = os.path.exists("./data/VOCdevkit")
 
 
 class VOCDataModule:
     def __init__(self, config: YOLOConfig):
         self.config = config
-        self.download = not __import__("os").path.exists("./data/VOCdevkit")
+        self.download = not os.path.exists("./data/VOCdevkit")
         self.train_transforms = self._get_train_transforms()
         self.valid_transforms = self._get_valid_transforms()
 
@@ -29,15 +28,17 @@ class VOCDataModule:
         return v2.Compose(
             [
                 v2.ToImage(),
-                v2.RandomHorizontalFlip(),
-                v2.ColorJitter(brightness=0.5, contrast=0, saturation=0.5, hue=0),
-                v2.RandomAffine(
-                    degrees=0,
-                    scale=(0.8, 1.2),
-                    translate=(0.2, 0.2),
-                    shear=0,
+                v2.RandomResizedCrop(
+                    self.config.IMAGE_SIZE,
+                    scale=(1 - self.config.Jitter, 1 + self.config.Jitter),
+                    ratio=(1 - self.config.Jitter, 1 + self.config.Jitter),
                 ),
-                v2.Resize(self.config.IMAGE_SIZE),
+                v2.RandomHorizontalFlip(),
+                v2.ColorJitter(
+                    brightness=(1 / self.config.Brightness, 1 * self.config.Brightness),
+                    saturation=(1 / self.config.Saturation, 1 * self.config.Saturation),
+                    hue=self.config.Hue,
+                ),
                 v2.ToDtype(torch.float32, scale=True),
                 v2.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
                 v2.ClampBoundingBoxes(),

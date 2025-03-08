@@ -100,7 +100,7 @@ def train(args):
             starting_epoch = resume_step // len(train_loader)
             resume_step -= starting_epoch * len(train_loader)
 
-    epoch_pbar = tqdm(range(starting_epoch, config.NUM_EPOCHS), desc="Epochs")
+    epoch_pbar = tqdm(range(starting_epoch, config.NUM_EPOCHS), desc="Epochs", initial=starting_epoch, total=config.NUM_EPOCHS)
     overall_step = 0
     map_50 = dict(
         train=None,

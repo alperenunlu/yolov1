@@ -17,12 +17,19 @@ class YOLOConfig:
     L_class: float
 
     Rescore: bool
+    Sqrt: bool
 
     BATCH_SIZE: int
     NUM_EPOCHS: int
 
+    Jitter: float
+    Brightness: float
+    Saturation: float
+    Hue: float
+
     LEARNING_RATE: float
     WEIGHT_DECAY: float
+    MOMENTUM: float
     PCT_START: float
 
     def asdict(self):
