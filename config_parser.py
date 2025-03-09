@@ -27,7 +27,9 @@ class YOLOConfig:
     Saturation: float
     Hue: float
 
-    LEARNING_RATE: float
+    BACKBONE_LR: float
+    HEAD_LR: float
+    PCT_START: float
     WEIGHT_DECAY: float
 
     def asdict(self):

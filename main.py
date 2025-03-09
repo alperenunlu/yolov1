@@ -62,13 +62,18 @@ def train(args):
         model = YOLO_V1(config)
 
     optimizer = optim.AdamW(
-        model.parameters(), lr=config.LEARNING_RATE, weight_decay=config.WEIGHT_DECAY
+        [
+            {"params": model.backbone.parameters(), "lr": config.BACKBONE_LR},
+            {"params": model.head.parameters(), "lr": config.HEAD_LR},
+        ],
+        weight_decay=config.WEIGHT_DECAY,
     )
     scheduler = optim.lr_scheduler.OneCycleLR(
         optimizer,
-        max_lr=config.LEARNING_RATE,
+        max_lr=[config.BACKBONE_LR, config.HEAD_LR],
         epochs=config.NUM_EPOCHS,
         steps_per_epoch=len(train_loader),
+        pct_start=config.PCT_START,
     )
     criterion = YOLOLoss(config)
     map_metric = MeanAveragePrecision(
@@ -157,7 +162,10 @@ def train(args):
                     accelerator.save_state(output_dir)
 
             accelerator.log(
-                dict(lr=optimizer.param_groups[0]["lr"]),
+                dict(
+                    backbone_lr=optimizer.param_groups[0]["lr"],
+                    head_lr=optimizer.param_groups[1]["lr"],
+                ),
                 step=overall_step,
             )
 
