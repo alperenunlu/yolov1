@@ -50,10 +50,6 @@ class YOLO_V1(nn.Module):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
 
-    def train(self, mode=True):
-        super().train(mode)
-        self.backbone.eval()
-
     def forward(self, x: Tensor) -> Tensor:
         x = self.backbone.forward_features(x)
         x = self.head(x)
