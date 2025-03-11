@@ -27,14 +27,11 @@ class YOLOConfig:
     Saturation: float
     Hue: float
 
-    BACKBONE_LR: float
-    HEAD_LR: float
-    PCT_START: float
+    LR: float
     WEIGHT_DECAY: float
 
     def asdict(self):
-        d = asdict(self)
-        return d
+        return asdict(self)
 
 
 def load_config(path: str) -> YOLOConfig:

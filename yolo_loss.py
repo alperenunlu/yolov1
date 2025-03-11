@@ -11,7 +11,6 @@ from config_parser import YOLOConfig
 class YOLOLoss(nn.Module):
     def __init__(self, config: YOLOConfig):
         super().__init__()
-        self.config = config
         self.S = config.S
         self.B = config.B
         self.C = config.C
@@ -23,59 +22,71 @@ class YOLOLoss(nn.Module):
         self.rescore = config.Rescore
         self.sqrt = config.Sqrt
 
+    @staticmethod
+    def _masked_mse(pred: Tensor, target: Tensor, mask: Tensor) -> Tensor:
+        return F.mse_loss(pred * mask, target.expand_as(pred) * mask, reduction="sum")
+
     def forward(self, pred: Tensor, target: Tensor) -> Tensor:
+        BATCH = pred.size(0)
         with torch.no_grad():
-            obj_mask = target[..., self.C, None] > 0
-            noobj_mask = ~obj_mask
+            obj_i = target[..., self.C, None] > 0
 
-            pred_boxes = pred[..., self.C :].view(-1, self.S, self.S, self.B, 5)
-            target_boxes = target[..., self.C :].view(-1, self.S, self.S, 5)
+            pred_boxes = pred[..., self.C :].clone().view(-1, self.S, self.S, self.B, 5)
+            target_boxes = target[..., self.C :].clone().view(-1, self.S, self.S, 5)
+            if self.sqrt:
+                pred_boxes[..., 3:] **= 2
 
-            ious = box_iou(
-                pred_boxes,
-                target_boxes,
-            )
+            ious = box_iou(pred_boxes, target_boxes)
             ious, best_bbox = ious.max(-1)
             rmse_idx = box_rmse(pred_boxes, target_boxes).argmin(-1)
             best_bbox[torch.where(ious == 0)] = rmse_idx[torch.where(ious == 0)]
-            idx = self.C + (best_bbox * 5)
-            idx = torch.arange(5, device=idx.device) + idx[..., None]
-            pred_boxes = pred.gather(-1, idx)
-
-            # Trick for expanding the best box gradient to the other boxes
-            pred.data[..., self.C :] = pred_boxes.tile(self.B).detach()
-            target_boxes = target[..., self.C :]
-            if self.config.Rescore:
-                target_boxes[..., 0] = ious
-            target = torch.cat(
-                (target[..., : self.C], target_boxes.tile(self.B)), dim=-1
+            resp_box = (
+                torch.zeros(BATCH, self.S, self.S, self.B, device=pred.device)
+                .scatter(-1, best_bbox[..., None], 1)
+                .bool()
             )
+
+            obj_ij = obj_i * resp_box
+            noobj_ij = ~obj_ij
+
+            if self.rescore:
+                target[..., self.C] = ious
             if self.sqrt:
-                target[..., self.C + 3 :: 5].sqrt_()
-                target[..., self.C + 4 :: 5].sqrt_()
+                target[..., self.C + 3 :].sqrt_()
 
-        mse_loss = F.mse_loss(pred, target, reduction="none")
-        obj_mse_loss = mse_loss * obj_mask
+        x_loss = self._masked_mse(
+            pred[..., self.C + 1 :: 5], target[..., self.C + 1 :: 5], obj_ij
+        )
+        y_loss = self._masked_mse(
+            pred[..., self.C + 2 :: 5], target[..., self.C + 2 :: 5], obj_ij
+        )
+        w_loss = self._masked_mse(
+            pred[..., self.C + 3 :: 5], target[..., self.C + 3 :: 5], obj_ij
+        )
+        h_loss = self._masked_mse(
+            pred[..., self.C + 4 :: 5], target[..., self.C + 4 :: 5], obj_ij
+        )
 
-        x_loss = obj_mse_loss[..., self.C + 1 :: 5]
-        y_loss = obj_mse_loss[..., self.C + 2 :: 5]
-        w_loss = obj_mse_loss[..., self.C + 3 :: 5]
-        h_loss = obj_mse_loss[..., self.C + 4 :: 5]
-        coord_loss = self.L_coord * (x_loss + y_loss + w_loss + h_loss).sum()
+        coord_loss = self.L_coord * (x_loss + y_loss + w_loss + h_loss)
 
-        conf_loss = self.L_obj * obj_mse_loss[..., self.C :: 5].sum()
-        noobj_loss = self.L_noobj * (mse_loss[..., self.C :: 5] * noobj_mask).sum()
-
-        class_loss = self.L_class * obj_mse_loss[..., : self.C].sum()
+        conf_loss = self.L_obj * self._masked_mse(
+            pred[..., self.C :: 5], target[..., self.C :: 5], obj_ij
+        )
+        noobj_loss = self.L_noobj * self._masked_mse(
+            pred[..., self.C :: 5], torch.zeros_like(target[..., self.C :: 5]), noobj_ij
+        )
+        class_loss = self.L_class * self._masked_mse(
+            pred[..., : self.C], target[..., : self.C], obj_i
+        )
 
         total_loss = coord_loss + conf_loss + noobj_loss + class_loss
 
-        return total_loss / pred.size(0)
+        return total_loss / BATCH
 
 
 if __name__ == "__main__":
 
-    def random_pred_and_target(BATCH_SIZE=16, config=YOLOConfig):
+    def random_pred_and_target(config: YOLOConfig, BATCH_SIZE: int = 1):
         S = config.S
         C = config.C
         B = config.B
@@ -113,3 +124,4 @@ if __name__ == "__main__":
     loss = loss_fn(pred, target)
     loss.backward()
     print(loss)
+    print(pred.grad[0, 0, 0])

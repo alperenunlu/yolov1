@@ -13,7 +13,14 @@ class YOLO_V1(nn.Module):
         self.B = config.B
         self.C = config.C
 
-        self.backbone = create_model("resnet18.tv_in1k", pretrained=True, num_classes=0)
+        self.backbone = create_model(
+            "resnet18.tv_in1k",
+            pretrained=True,
+            num_classes=0,
+            global_pool="",
+            drop_path_rate=0.4,
+            drop_block_rate=0.4,
+        )
 
         self.head = nn.Sequential(
             nn.Conv2d(512, 1024, kernel_size=3, padding=1, bias=False),
@@ -51,7 +58,7 @@ class YOLO_V1(nn.Module):
                 nn.init.constant_(m.bias, 0)
 
     def forward(self, x: Tensor) -> Tensor:
-        x = self.backbone.forward_features(x)
+        x = self.backbone(x)
         x = self.head(x)
         return x.reshape(x.size(0), self.S, self.S, self.B * 5 + self.C)
 

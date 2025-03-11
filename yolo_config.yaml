@@ -40,12 +40,10 @@ Sqrt: True
 BATCH_SIZE: 64
 NUM_EPOCHS: 155
 
-Jitter: 0.1
+Jitter: 0.2
 Brightness: 1.5
 Saturation: 1.5
 Hue: 0.1
 
-BACKBONE_LR: 0.00001
-HEAD_LR: 0.001
-PCT_START: 0.3
-WEIGHT_DECAY: 0.0005
+LR: 0.0001
+WEIGHT_DECAY: 0.001

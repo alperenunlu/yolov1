@@ -1,6 +1,6 @@
 import torch
 
-from torchvision.ops import box_convert, batched_nms, clip_boxes_to_image
+from torchvision.ops import box_convert, nms, clip_boxes_to_image
 
 from typing import Tuple, List, Dict, Union
 from torchvision.tv_tensors import BoundingBoxes, BoundingBoxFormat
@@ -174,29 +174,28 @@ def yolo_pred_to_dict(
         List[Dict[str, Union[BoundingBoxes, Tensor]]]: List of dictionaries containing boxes, labels and scores.
     """
     boxes, classes = yolo_pred_to_xyxy(pred, config)
-    box_mask = boxes[..., 0].argmax(dim=-1)
-    selected_boxes = boxes.gather(
-        dim=-2, index=box_mask[..., None, None].expand(-1, -1, -1, -1, 5)
-    ).squeeze(-2)
-    conf_mask = selected_boxes[..., 0] > 0.05
-    selected_scores = selected_boxes[conf_mask][:, 0]
-    selected_boxes = selected_boxes[conf_mask][:, 1:]
-    selected_classes = classes[conf_mask].argmax(dim=-1) + 1
-    count = conf_mask.sum((1, 2)).tolist()
+    conf_mask = boxes[..., 0] > 0.05
+    selected_scores, selected_boxes = boxes[conf_mask].split([1, 4], dim=-1)
+    selected_scores = selected_scores.squeeze(-1)
+    selected_classes = (
+        classes.argmax(dim=-1, keepdim=True).repeat_interleave(config.B, dim=-1)[
+            conf_mask
+        ]
+        + 1
+    )
+    count = conf_mask.sum((1, 2, 3)).tolist()
 
     selected_boxes = clip_boxes_to_image(selected_boxes, size=config.IMAGE_SIZE)
 
     index_list = [
-        batched_nms(
+        nms(
             boxes=boxes,
             scores=scores,
-            idxs=labels,
             iou_threshold=0.5,
         )
-        for boxes, scores, labels in zip(
+        for boxes, scores in zip(
             selected_boxes.split(count),
             selected_scores.split(count),
-            selected_classes.split(count),
         )
     ]
 
@@ -219,17 +218,22 @@ def yolo_pred_to_dict(
     return pred_dict
 
 
-def box_iou(pred, target):
-    l1 = pred[..., 1:3] - pred[..., 3:] / 2
-    l2 = target[..., 1:3] - target[..., 3:] / 2
+def box_iou(pred: Tensor, target: Tensor, S: int = 1) -> Tensor:
+    """Calculates Intersection over Union (IoU) between predicted and target boxes. For each cell in the grid."""
+    l1 = pred[..., 1:3] / S - pred[..., 3:] / 2
+    l2 = target[..., 1:3] / S - target[..., 3:] / 2
     left = torch.max(l1, l2[..., None, :])
-    r1 = pred[..., 1:3] + pred[..., 3:] / 2
-    r2 = target[..., 1:3] + target[..., 3:] / 2
+    r1 = pred[..., 1:3] / S + pred[..., 3:] / 2
+    r2 = target[..., 1:3] / S + target[..., 3:] / 2
     right = torch.min(r1, r2[..., None, :])
     i = torch.relu(right - left).prod(-1)
     u = pred[..., 3:].prod(-1) + target[..., None, 3:].prod(-1) - i
     return i / (u + 1e-6)
 
 
-def box_rmse(pred, target):
-    return ((pred[..., 1:] - target[..., None, 1:]).pow(2).sum(-1)).sqrt()
+def box_rmse(pred: Tensor, target: Tensor, S: int = 1) -> Tensor:
+    """Calculates Root Mean Squared Error (RMSE) between predicted and target boxes. For each cell in the grid"""
+    coord_diff = (pred[..., 1:3] / S - target[..., None, 1:3] / S).pow(2).sum(-1)
+    dim_diff = (pred[..., 3:] - target[..., None, 3:]).pow(2).sum(-1)
+
+    return (coord_diff + dim_diff).sqrt()

@@ -62,18 +62,11 @@ def train(args):
         model = YOLO_V1(config)
 
     optimizer = optim.AdamW(
-        [
-            {"params": model.backbone.parameters(), "lr": config.BACKBONE_LR},
-            {"params": model.head.parameters(), "lr": config.HEAD_LR},
-        ],
+        model.parameters(), lr=config.LR,
         weight_decay=config.WEIGHT_DECAY,
     )
-    scheduler = optim.lr_scheduler.OneCycleLR(
-        optimizer,
-        max_lr=[config.BACKBONE_LR, config.HEAD_LR],
-        epochs=config.NUM_EPOCHS,
-        steps_per_epoch=len(train_loader),
-        pct_start=config.PCT_START,
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, T_max=config.NUM_EPOCHS * len(train_loader)
     )
     criterion = YOLOLoss(config)
     map_metric = MeanAveragePrecision(
@@ -120,7 +113,7 @@ def train(args):
         valid=None,
     )
     for epoch in epoch_pbar:
-        total_loss = 0
+        total_loss = [0, 0]
         model.train()
         if (
             args.resume_from_checkpoint
@@ -151,7 +144,7 @@ def train(args):
             map_metric.update(yolo_pred_to_dict(yolo_output, config), labels_dict)
 
             train_pbar.set_postfix(loss=loss.item())
-            total_loss += loss.item()
+            total_loss[0] += loss.item()
             overall_step += 1
 
             if isinstance(args.checkpointing_steps, int):
@@ -163,8 +156,7 @@ def train(args):
 
             accelerator.log(
                 dict(
-                    backbone_lr=optimizer.param_groups[0]["lr"],
-                    head_lr=optimizer.param_groups[1]["lr"],
+                    lr=optimizer.param_groups[0]["lr"],
                 ),
                 step=overall_step,
             )
@@ -184,6 +176,10 @@ def train(args):
             yolo_output, labels_dict = accelerator.gather_for_metrics(
                 (yolo_output, labels_dict)
             )
+            loss = criterion(yolo_output, yolo_target)
+
+            valid_pbar.set_postfix(loss=loss.item())
+            total_loss[1] += loss.item()
             map_metric.update(yolo_pred_to_dict(yolo_output, config), labels_dict)
         metric_dict = map_metric.compute()
         map_50["valid"] = metric_dict["map_50"]
@@ -200,7 +196,8 @@ def train(args):
             dict(
                 train_map_50=map_50["train"],
                 valid_map_50=map_50["valid"],
-                epoch_loss=total_loss / len(train_loader),
+                train_loss=total_loss[0] / len(train_loader),
+                valid_loss=total_loss[1] / len(valid_loader),
                 epoch=epoch,
             ),
             step=overall_step,
