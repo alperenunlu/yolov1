@@ -14,7 +14,7 @@ class YOLO_V1(nn.Module):
         self.C = config.C
 
         self.backbone = create_model(
-            "resnet18.tv_in1k",
+            "resnet34.tv_in1k",
             pretrained=True,
             num_classes=0,
             global_pool="",

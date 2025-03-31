@@ -38,7 +38,7 @@ Rescore: False
 Sqrt: True
 
 BATCH_SIZE: 64
-NUM_EPOCHS: 155
+NUM_EPOCHS: 130
 
 Jitter: 0.2
 Brightness: 1.5
