@@ -1,11 +1,9 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
-from yolo_utils import box_iou, box_rmse
-
-from torch import Tensor
 from config_parser import YOLOConfig
+from torch import Tensor
+from yolo_utils import box_iou, box_rmse
 
 
 class YOLOLoss(nn.Module):

@@ -1,7 +1,7 @@
+from dataclasses import asdict, dataclass
 from typing import List, Tuple
 
 import yaml
-from dataclasses import dataclass, asdict
 
 
 @dataclass

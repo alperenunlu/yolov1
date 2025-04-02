@@ -1,12 +1,10 @@
+from typing import Dict, List, Tuple, Union
+
 import torch
-
-from torchvision.ops import box_convert, nms, clip_boxes_to_image
-
-from typing import Tuple, List, Dict, Union
-from torchvision.tv_tensors import BoundingBoxes, BoundingBoxFormat
-from torch import Tensor
-
 from config_parser import YOLOConfig
+from torch import Tensor
+from torchvision.ops import box_convert, clip_boxes_to_image, nms
+from torchvision.tv_tensors import BoundingBoxes, BoundingBoxFormat
 
 
 def xyxy_to_yolo_target(
@@ -175,14 +173,13 @@ def yolo_pred_to_dict(
     """
     boxes, classes = yolo_pred_to_xyxy(pred, config)
     conf_mask = boxes[..., 0] > 0.05
-    selected_scores, selected_boxes = boxes[conf_mask].split([1, 4], dim=-1)
-    selected_scores = selected_scores.squeeze(-1)
-    selected_classes = (
-        classes.argmax(dim=-1, keepdim=True).repeat_interleave(config.B, dim=-1)[
-            conf_mask
-        ]
-        + 1
-    )
+    max_class_score, max_class_arg = classes.max(dim=-1, keepdim=True)
+    scores, boxes = boxes.split([1, 4], dim=-1)
+    scores = scores[..., 0] * max_class_score
+    selected_scores = scores[conf_mask]
+    selected_boxes = boxes[conf_mask]
+
+    selected_classes = max_class_arg.repeat_interleave(config.B, dim=-1)[conf_mask] + 1
     count = conf_mask.sum((1, 2, 3)).tolist()
 
     selected_boxes = clip_boxes_to_image(selected_boxes, size=config.IMAGE_SIZE)

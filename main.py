@@ -1,15 +1,16 @@
+import argparse
 import os
+
 import torch
 import torch.optim as optim
-from voc_data import VOCDataModule
-from yolo_model import YOLO_V1
-from yolo_loss import YOLOLoss
-from yolo_utils import yolo_pred_to_dict
-from voc07_metric import VOC07_mAP
 from accelerate import Accelerator
 from config_parser import load_config
+from torchmetrics.detection import MeanAveragePrecision
 from tqdm.auto import tqdm
-import argparse
+from voc_data import VOCDataModule
+from yolo_loss import YOLOLoss
+from yolo_model import YOLO_V1
+from yolo_utils import yolo_pred_to_dict
 
 
 def parse_args():
@@ -50,7 +51,7 @@ def train(args):
         project_dir=args.project_dir,
         log_with="wandb",
         dynamo_backend="inductor" if torch.cuda.is_available() else None,
-        mixed_precision="bf16" if torch.cuda.is_available() else None,
+        # mixed_precision="bf16" if torch.cuda.is_available() else None,
     )
     accelerator.init_trackers(
         project_name="yolo-v1",
@@ -63,14 +64,19 @@ def train(args):
         model = YOLO_V1(config)
 
     optimizer = optim.AdamW(
-        model.parameters(), lr=config.LR,
+        model.parameters(),
+        lr=config.LR,
         weight_decay=config.WEIGHT_DECAY,
     )
     scheduler = optim.lr_scheduler.CosineAnnealingLR(
         optimizer, T_max=config.NUM_EPOCHS * len(train_loader), eta_min=1e-6
     )
     criterion = YOLOLoss(config)
-    map_metric = VOC07_mAP()
+    map_metric = MeanAveragePrecision(
+        iou_thresholds=[0.5],
+        rec_thresholds=[i / 10 for i in range(1, 10)],
+        backend="faster_coco_eval",
+    )
 
     model, optimizer, train_loader, valid_loader, scheduler = accelerator.prepare(
         model, optimizer, train_loader, valid_loader, scheduler
@@ -105,7 +111,7 @@ def train(args):
         total=config.NUM_EPOCHS,
     )
 
-    map_split = dict(
+    map_50 = dict(
         train=None,
         valid=None,
     )
@@ -158,9 +164,9 @@ def train(args):
                 step=overall_step,
             )
 
-        mAP = map_metric.compute()
-        map_split["train"] = mAP
-        epoch_pbar.set_postfix(map_split)
+        metric_dict = map_metric.compute()
+        map_50["train"] = metric_dict["map_50"]
+        epoch_pbar.set_postfix(map_50)
         map_metric.reset()
 
         model.eval()
@@ -178,9 +184,9 @@ def train(args):
             valid_pbar.set_postfix(loss=loss.item())
             total_loss[1] += loss.item()
             map_metric.update(yolo_pred_to_dict(yolo_output, config), labels_dict)
-        mAP = map_metric.compute()
-        map_split["valid"] = mAP
-        epoch_pbar.set_postfix(map_split)
+        metric_dict = map_metric.compute()
+        map_50["valid"] = metric_dict["map_50"]
+        epoch_pbar.set_postfix(map_50)
         map_metric.reset()
 
         if args.checkpointing_steps == "epoch" and (
@@ -191,8 +197,8 @@ def train(args):
 
         accelerator.log(
             dict(
-                train_map=map_split["train"],
-                valid_map=map_split["valid"],
+                train_map=map_50["train"],
+                valid_map=map_50["valid"],
                 train_loss=total_loss[0] / len(train_loader),
                 valid_loss=total_loss[1] / len(valid_loader),
                 epoch=epoch,

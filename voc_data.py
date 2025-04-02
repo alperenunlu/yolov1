@@ -1,18 +1,12 @@
 import os
-
-import torch
-from torch.utils.data import DataLoader, Dataset
-from torch.utils.data import ConcatDataset
-
-from torchvision.datasets import VOCDetection
-from torchvision.datasets import wrap_dataset_for_transforms_v2
-from torchvision.transforms import v2
-
-from yolo_utils import xyxy_to_yolo_target
-
 from typing import Tuple
 
+import torch
 from config_parser import YOLOConfig
+from torch.utils.data import ConcatDataset, DataLoader, Dataset
+from torchvision.datasets import VOCDetection, wrap_dataset_for_transforms_v2
+from torchvision.transforms import v2
+from yolo_utils import xyxy_to_yolo_target
 
 n_cpu = os.cpu_count() or 0
 
@@ -36,7 +30,6 @@ class VOCDataModule:
                 v2.RandomHorizontalFlip(),
                 v2.RandomPhotometricDistort(),
                 v2.ToDtype(torch.float32, scale=True),
-                v2.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
                 v2.ClampBoundingBoxes(),
                 v2.SanitizeBoundingBoxes(),
             ]
@@ -49,7 +42,6 @@ class VOCDataModule:
                 v2.ToImage(),
                 v2.Resize(self.config.IMAGE_SIZE),
                 v2.ToDtype(torch.float32, scale=True),
-                v2.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
                 v2.ClampBoundingBoxes(),
                 v2.SanitizeBoundingBoxes(),
             ]
