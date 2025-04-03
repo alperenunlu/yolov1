@@ -41,9 +41,6 @@ BATCH_SIZE: 64
 NUM_EPOCHS: 130
 
 Jitter: 0.2
-Brightness: 1.5
-Saturation: 1.5
-Hue: 0.1
 
-LR: 0.0001
+LR: 0.00005
 WEIGHT_DECAY: 0.001

@@ -68,13 +68,15 @@ def train(args):
         lr=config.LR,
         weight_decay=config.WEIGHT_DECAY,
     )
-    scheduler = optim.lr_scheduler.CosineAnnealingLR(
-        optimizer, T_max=config.NUM_EPOCHS * len(train_loader), eta_min=1e-6
+    scheduler = optim.lr_scheduler.OneCycleLR(
+        optimizer,
+        max_lr=config.LR,
+        steps_per_epoch=len(train_loader),
+        epochs=config.NUM_EPOCHS,
+        pct_start=0.1,
     )
     criterion = YOLOLoss(config)
     map_metric = MeanAveragePrecision(
-        iou_thresholds=[0.5],
-        rec_thresholds=[i / 10 for i in range(1, 10)],
         backend="faster_coco_eval",
     )
 

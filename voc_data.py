@@ -1,5 +1,4 @@
 import os
-from typing import Tuple
 
 import torch
 from config_parser import YOLOConfig
@@ -15,11 +14,11 @@ class VOCDataModule:
     def __init__(self, config: YOLOConfig):
         self.config = config
         self.download = not os.path.exists("./data/VOCdevkit")
-        self.train_transforms = self._get_train_transforms()
-        self.valid_transforms = self._get_valid_transforms()
+        self.train_transforms = self._train_transform_fn
+        self.valid_transforms = self._valid_transform_fn
 
-    def _get_train_transforms(self):
-        return v2.Compose(
+    def _train_transform_fn(self, image, target):
+        v2_compose = v2.Compose(
             [
                 v2.ToImage(),
                 v2.RandomResizedCrop(
@@ -34,10 +33,22 @@ class VOCDataModule:
                 v2.SanitizeBoundingBoxes(),
             ]
         )
+        image, target = v2_compose(image, target)
+        yolo_target = xyxy_to_yolo_target(
+            target["boxes"], target["labels"], self.config
+        )
 
-    def _get_valid_transforms(self):
-        """Returns a transform pipeline for validation."""
-        return v2.Compose(
+        annot = dict(
+            id=target["annotation"]["filename"],
+            boxes=target["boxes"],
+            labels=target["labels"],
+            difficult=[int(obj["difficult"]) for obj in target["annotation"]["object"]],
+        )
+
+        return image, yolo_target, annot
+
+    def _valid_transform_fn(self, image, target):
+        v2_compose = v2.Compose(
             [
                 v2.ToImage(),
                 v2.Resize(self.config.IMAGE_SIZE),
@@ -46,20 +57,32 @@ class VOCDataModule:
                 v2.SanitizeBoundingBoxes(),
             ]
         )
+        image, target = v2_compose(image, target)
+        yolo_target = xyxy_to_yolo_target(
+            target["boxes"], target["labels"], self.config
+        )
+
+        annot = dict(
+            id=target["annotation"]["filename"],
+            boxes=target["boxes"],
+            labels=target["labels"],
+            difficult=torch.tensor(
+                [int(obj["difficult"]) for obj in target["annotation"]["object"]],
+                dtype=torch.bool,
+            ),
+        )
+
+        return image, yolo_target, annot
 
     def _collate_fn(self, batch):
         """Collate function to handle batching of images and targets."""
-        images, targets = zip(*batch)
-        images = torch.stack(images)
-        yolo_targets = torch.stack(
-            [
-                xyxy_to_yolo_target(target["boxes"], target["labels"], self.config)
-                for target in targets
-            ]
-        )
-        return images, yolo_targets, targets
+        images, yolo_targets, annot = zip(*batch)
+        images = torch.stack(images, dim=0)
+        yolo_targets = torch.stack(yolo_targets, dim=0)
+        annot = [d for d in annot]
+        return images, yolo_targets, annot
 
-    def get_dataloaders(self) -> Tuple[DataLoader, DataLoader]:
+    def get_dataloaders(self) -> tuple[DataLoader, DataLoader]:
         """
         Returns training and validation DataLoaders.
         """
@@ -71,7 +94,8 @@ class VOCDataModule:
                     image_set=split,
                     download=self.download,
                     transforms=self.train_transforms,
-                )
+                ),
+                target_keys="all",
             )
             for year in ["2007", "2012"]
             for split in ["train", "val"]
@@ -84,7 +108,8 @@ class VOCDataModule:
                 image_set="test",
                 download=self.download,
                 transforms=self.valid_transforms,
-            )
+            ),
+            target_keys="all",
         )
 
         train_datasets_concat: Dataset = ConcatDataset(train_datasets)

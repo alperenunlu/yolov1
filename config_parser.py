@@ -1,5 +1,4 @@
 from dataclasses import asdict, dataclass
-from typing import List, Tuple
 
 import yaml
 
@@ -9,8 +8,8 @@ class YOLOConfig:
     S: int
     B: int
     C: int
-    IMAGE_SIZE: Tuple[int, int]
-    VOC_DETECTION_CATEGORIES: List[str]
+    IMAGE_SIZE: tuple[int, int]
+    VOC_DETECTION_CATEGORIES: list[str]
     L_coord: float
     L_obj: float
     L_noobj: float
@@ -23,9 +22,6 @@ class YOLOConfig:
     NUM_EPOCHS: int
 
     Jitter: float
-    Brightness: float
-    Saturation: float
-    Hue: float
 
     LR: float
     WEIGHT_DECAY: float

@@ -1,9 +1,7 @@
-from typing import Dict, List, Tuple, Union
-
 import torch
 from config_parser import YOLOConfig
 from torch import Tensor
-from torchvision.ops import box_convert, clip_boxes_to_image, nms
+from torchvision.ops import batched_nms, box_convert, clip_boxes_to_image
 from torchvision.tv_tensors import BoundingBoxes, BoundingBoxFormat
 
 
@@ -58,7 +56,7 @@ def xyxy_to_yolo_target(
 
 
 @torch.no_grad()
-def yolo_target_to_xyxy(target: Tensor, config: YOLOConfig) -> Tuple[Tensor, Tensor]:
+def yolo_target_to_xyxy(target: Tensor, config: YOLOConfig) -> tuple[Tensor, Tensor]:
     """Converts :class:`torch.Tensor` target from yolo style cxcywh format to xyxy format.
 
     Args:
@@ -105,7 +103,7 @@ def yolo_target_to_xyxy(target: Tensor, config: YOLOConfig) -> Tuple[Tensor, Ten
 
 
 @torch.no_grad()
-def yolo_pred_to_xyxy(pred: Tensor, config: YOLOConfig) -> Tuple[Tensor, Tensor]:
+def yolo_pred_to_xyxy(pred: Tensor, config: YOLOConfig) -> tuple[Tensor, Tensor]:
     """Converts :class:`torch.Tensor` prediction from yolo style cxcywh format to xyxy format.
 
     Args:
@@ -158,8 +156,8 @@ def yolo_pred_to_xyxy(pred: Tensor, config: YOLOConfig) -> Tuple[Tensor, Tensor]
 
 @torch.no_grad()
 def yolo_pred_to_dict(
-    pred: Tensor, config: YOLOConfig
-) -> List[Dict[str, Union[BoundingBoxes, Tensor]]]:
+    pred: Tensor, config: YOLOConfig, thresh: float = 0.01
+) -> list[dict[str, BoundingBoxes | Tensor]]:
     """Converts :class:`torch.Tensor` prediction to a list of :class:`BoundingBoxes`, :class:`Tensor` labels and :class:`Tensor` scores.
 
     List of dictionaries containing `boxes`, `labels` and `scores`.
@@ -172,43 +170,34 @@ def yolo_pred_to_dict(
         List[Dict[str, Union[BoundingBoxes, Tensor]]]: List of dictionaries containing boxes, labels and scores.
     """
     boxes, classes = yolo_pred_to_xyxy(pred, config)
-    conf_mask = boxes[..., 0] > 0.05
-    max_class_score, max_class_arg = classes.max(dim=-1, keepdim=True)
-    scores, boxes = boxes.split([1, 4], dim=-1)
-    scores = scores[..., 0] * max_class_score
-    selected_scores = scores[conf_mask]
-    selected_boxes = boxes[conf_mask]
 
-    selected_classes = max_class_arg.repeat_interleave(config.B, dim=-1)[conf_mask] + 1
-    count = conf_mask.sum((1, 2, 3)).tolist()
+    conf, coords = boxes.split([1, 4], dim=-1)
+    coords = coords.unsqueeze(4).expand(-1, -1, -1, -1, config.C, -1)
+    score = classes.unsqueeze(3) * conf
+    label = torch.arange(config.C, device=pred.device).expand_as(score) + 1
 
-    selected_boxes = clip_boxes_to_image(selected_boxes, size=config.IMAGE_SIZE)
+    mask = score > thresh
+    count = mask.sum(dim=[1, 2, 3, 4]).tolist()
+
+    scores_list = score[mask].split(count)
+    bboxes_list = clip_boxes_to_image(coords[mask], size=config.IMAGE_SIZE).split(count)
+    label_list = label[mask].split(count)
 
     index_list = [
-        nms(
-            boxes=boxes,
-            scores=scores,
-            iou_threshold=0.5,
-        )
-        for boxes, scores in zip(
-            selected_boxes.split(count),
-            selected_scores.split(count),
-        )
+        batched_nms(boxes=bboxes, scores=scores, idxs=idxs, iou_threshold=0.5)
+        for bboxes, scores, idxs in zip(bboxes_list, scores_list, label_list)
     ]
 
     pred_dict = [
-        {
-            "boxes": BoundingBoxes(
-                boxes[index], format="xyxy", canvas_size=config.IMAGE_SIZE
+        dict(
+            boxes=BoundingBoxes(
+                bboxes[index], format="xyxy", canvas_size=config.IMAGE_SIZE
             ),
-            "labels": labels[index],
-            "scores": scores[index],
-        }
-        for boxes, labels, scores, index in zip(
-            selected_boxes.split(count),
-            selected_classes.split(count),
-            selected_scores.split(count),
-            index_list,
+            labels=labels[index],
+            scores=scores[index],
+        )
+        for index, bboxes, labels, scores in zip(
+            index_list, bboxes_list, label_list, scores_list
         )
     ]
 
