@@ -1,10 +1,10 @@
 import os
 
 import torch
-from config_parser import YOLOConfig
 from torch.utils.data import ConcatDataset, DataLoader, Dataset
 from torchvision.datasets import VOCDetection, wrap_dataset_for_transforms_v2
 from torchvision.transforms import v2
+from yolo_config import YOLOConfig
 from yolo_utils import xyxy_to_yolo_target
 
 n_cpu = os.cpu_count() or 0
@@ -29,6 +29,9 @@ class VOCDataModule:
                 v2.RandomHorizontalFlip(),
                 v2.RandomPhotometricDistort(),
                 v2.ToDtype(torch.float32, scale=True),
+                v2.Normalize(
+                    [0.4850, 0.4560, 0.4060], [0.2290, 0.2240, 0.2250]
+                ),  # For ResNet
                 v2.ClampBoundingBoxes(),
                 v2.SanitizeBoundingBoxes(),
             ]
@@ -53,6 +56,9 @@ class VOCDataModule:
                 v2.ToImage(),
                 v2.Resize(self.config.IMAGE_SIZE),
                 v2.ToDtype(torch.float32, scale=True),
+                v2.Normalize(
+                    [0.4850, 0.4560, 0.4060], [0.2290, 0.2240, 0.2250]
+                ),  # For ResNet
                 v2.ClampBoundingBoxes(),
                 v2.SanitizeBoundingBoxes(),
             ]
@@ -120,6 +126,7 @@ class VOCDataModule:
             shuffle=True,
             collate_fn=self._collate_fn,
             num_workers=n_cpu,
+            persistent_workers=True if n_cpu > 0 else False,
             pin_memory=True if torch.cuda.is_available() else False,
         )
 
@@ -130,15 +137,16 @@ class VOCDataModule:
             collate_fn=self._collate_fn,
             num_workers=n_cpu,
             pin_memory=True if torch.cuda.is_available() else False,
+            persistent_workers=True if n_cpu > 0 else False,
         )
 
         return train_loader, valid_loader
 
 
 if __name__ == "__main__":
-    from config_parser import load_config
+    from yolo_config import load_config
 
-    config = load_config("yolo_config.yaml")
+    config = load_config("yolo_config.toml")
 
     from yolo_utils import yolo_target_to_xyxy
 

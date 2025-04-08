@@ -4,12 +4,12 @@ import os
 import torch
 import torch.optim as optim
 from accelerate import Accelerator
-from config_parser import load_config
 from torchmetrics.detection import MeanAveragePrecision
 from tqdm.auto import tqdm
 from voc_data import VOCDataModule
+from yolo_config import load_config
 from yolo_loss import YOLOLoss
-from yolo_model import YOLO_V1
+from yolo_model import YOLOv1
 from yolo_utils import yolo_pred_to_dict
 
 
@@ -45,7 +45,7 @@ def parse_args():
 
 
 def train(args):
-    config = load_config("yolo_config.yaml")
+    config = load_config("yolo_config.toml")
 
     accelerator = Accelerator(
         project_dir=args.project_dir,
@@ -54,14 +54,14 @@ def train(args):
         # mixed_precision="bf16" if torch.cuda.is_available() else None,
     )
     accelerator.init_trackers(
-        project_name="yolo-v1",
+        project_name="YOLOv1",
         config=config.asdict(),
     )
 
     voc_data = VOCDataModule(config)
     with accelerator.main_process_first():
         train_loader, valid_loader = voc_data.get_dataloaders()
-        model = YOLO_V1(config)
+        model = YOLOv1(config)
 
     optimizer = optim.AdamW(
         model.parameters(),
@@ -74,10 +74,14 @@ def train(args):
         steps_per_epoch=len(train_loader),
         epochs=config.NUM_EPOCHS,
         pct_start=0.1,
+        div_factor=10,
+        final_div_factor=10,
     )
     criterion = YOLOLoss(config)
     map_metric = MeanAveragePrecision(
         backend="faster_coco_eval",
+        rec_thresholds=[i / 10 for i in range(11)],
+        iou_thresholds=[0.5],
     )
 
     model, optimizer, train_loader, valid_loader, scheduler = accelerator.prepare(
@@ -138,10 +142,10 @@ def train(args):
             yolo_output = model(images)
             loss = criterion(yolo_output, yolo_target)
 
-            optimizer.zero_grad()
             accelerator.backward(loss)
             optimizer.step()
             scheduler.step()
+            optimizer.zero_grad()
 
             yolo_output, labels_dict = accelerator.gather_for_metrics(
                 (yolo_output, labels_dict)
@@ -161,7 +165,7 @@ def train(args):
 
             accelerator.log(
                 dict(
-                    lr=optimizer.param_groups[0]["lr"],
+                    lr=scheduler.get_last_lr()[0],
                 ),
                 step=overall_step,
             )

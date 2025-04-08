@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from config_parser import YOLOConfig
 from torch import Tensor
+from yolo_config import YOLOConfig
 from yolo_utils import box_iou, box_rmse
 
 
@@ -68,7 +68,7 @@ class YOLOLoss(nn.Module):
         coord_loss = self.L_coord * (x_loss + y_loss + w_loss + h_loss)
 
         conf_loss = self.L_obj * self._masked_mse(
-            pred[..., self.C :: 5], target[..., self.C :: 5], obj_ij
+            pred[..., self.C :: 5], torch.ones_like(target[..., self.C :: 5]), obj_ij
         )
         noobj_loss = self.L_noobj * self._masked_mse(
             pred[..., self.C :: 5], torch.zeros_like(target[..., self.C :: 5]), noobj_ij
@@ -111,9 +111,9 @@ if __name__ == "__main__":
 
         return pred, target
 
-    from config_parser import load_config
+    from yolo_config import load_config
 
-    config = load_config("yolo_config.yaml")
+    config = load_config("yolo_config.toml")
 
     loss_fn = YOLOLoss(config)
     pred, target = random_pred_and_target(config=config)

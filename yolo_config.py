@@ -1,6 +1,6 @@
 from dataclasses import asdict, dataclass
 
-import yaml
+from tomllib import load
 
 
 @dataclass
@@ -9,7 +9,7 @@ class YOLOConfig:
     B: int
     C: int
     IMAGE_SIZE: tuple[int, int]
-    VOC_DETECTION_CATEGORIES: list[str]
+    VOC_DETECTION_CATEGORIES: tuple[str]
     L_coord: float
     L_obj: float
     L_noobj: float
@@ -26,18 +26,22 @@ class YOLOConfig:
     LR: float
     WEIGHT_DECAY: float
 
+    def __post_init__(self):
+        self.IMAGE_SIZE = tuple(self.IMAGE_SIZE)
+        self.VOC_DETECTION_CATEGORIES = tuple(self.VOC_DETECTION_CATEGORIES)
+
     def asdict(self):
         return asdict(self)
 
 
-def load_config(path: str) -> YOLOConfig:
-    config = yaml.safe_load(open(path, "r"))
+def load_config(path: str = "yolo_config.toml") -> YOLOConfig:
+    with open(path, "rb") as f:
+        config = load(f)
     return YOLOConfig(**config)
 
-
-config = load_config("yolo_config.yaml")
 
 if __name__ == "__main__":
     from pprint import pprint
 
-    pprint(config)
+    cfg = load_config()
+    pprint(cfg.IMAGE_SIZE)
