@@ -31,7 +31,7 @@ VOC_DETECTION_CATEGORIES = [
   "tvmonitor",
 ]
 
-L_coord = 2.0
+L_coord = 5.0
 L_obj = 1.0
 L_noobj = 0.5
 L_class = 1.0
@@ -44,5 +44,5 @@ NUM_EPOCHS = 50
 
 Jitter = 0.2
 
-LR = 1E-4
-WEIGHT_DECAY = 5E-4
+LR = 5E-5
+WEIGHT_DECAY = 1E-3
